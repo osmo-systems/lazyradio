@@ -352,6 +352,21 @@ impl AudioPlayer {
         info.error_message = None;
     }
 
+    pub fn shutdown(&mut self) {
+        // Immediate shutdown - stop playback and clear state
+        info!("Shutting down audio player");
+        let mut sink_guard = self.sink.lock().unwrap();
+        if let Some(sink) = sink_guard.take() {
+            // Stop immediately without waiting
+            sink.stop();
+        }
+        drop(sink_guard);
+        
+        self.current_url = None;
+        self.current_name = None;
+        // No need to update info state since we're shutting down
+    }
+
     pub fn set_volume(&mut self, volume: f32) {
         let volume = volume.clamp(0.0, 1.0);
         debug!("Setting volume to: {:.2}", volume);

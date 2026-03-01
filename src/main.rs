@@ -237,6 +237,11 @@ async fn main() -> Result<()> {
             _ = tick_interval.tick() => {
                 // Regular tick for animations
             }
+            _ = tokio::signal::ctrl_c() => {
+                // Handle Ctrl+C signal from OS
+                info!("Received Ctrl+C signal, shutting down...");
+                app.quit();
+            }
             _ = async {
                 if event::poll(Duration::from_millis(50)).unwrap() {
                     if let Ok(Event::Key(key)) = event::read() {
@@ -253,6 +258,10 @@ async fn main() -> Result<()> {
             break;
         }
     }
+
+    // Shutdown audio player immediately to stop any background tasks
+    info!("Shutting down audio player");
+    audio_player.shutdown();
 
     // Restore terminal
     disable_raw_mode()?;
