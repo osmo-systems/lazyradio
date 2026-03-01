@@ -299,6 +299,12 @@ impl App {
             self.current_page = page;
             self.selected_index = 0;
             self.scroll_offset = 0;
+            
+            // Update is_last_page: if cached page has fewer stations than limit, it's the last page
+            // Otherwise, we can't know for sure without fetching, so assume there might be more
+            let query = &self.current_query;
+            self.is_last_page = stations.len() < query.limit;
+            
             return Ok(());
         }
         

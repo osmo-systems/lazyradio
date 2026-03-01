@@ -264,12 +264,12 @@ async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) 
         return;
     }
     
-    // Handle error popup (takes priority after help)
-    if app.error_popup.is_some() {
-        tracing::info!("Error popup is open, key pressed: {:?}", key);
+    // Handle error/warning popup (takes priority after help)
+    if app.error_popup.is_some() || app.warning_popup.is_some() {
+        tracing::info!("Error/warning popup is open, key pressed: {:?}", key);
         match key {
             KeyCode::Esc | KeyCode::Enter => {
-                tracing::info!("Closing error popup");
+                tracing::info!("Closing error/warning popup");
                 app.close_error_popup();
             }
             _ => {
