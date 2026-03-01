@@ -260,10 +260,6 @@ async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) 
             KeyCode::Esc | KeyCode::Enter => {
                 app.close_error_popup();
             }
-            KeyCode::Char('q') | KeyCode::Char('Q') => {
-                // Allow quit even with error popup
-                app.quit();
-            }
             _ => {}
         }
         return;

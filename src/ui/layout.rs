@@ -329,7 +329,7 @@ fn draw_error_popup(f: &mut Frame, app: &App) {
             Line::from(""),
             Line::from(Span::raw(error_msg)),
             Line::from(""),
-            Line::from(Span::styled("Press Esc/Enter to close, Q to quit app", Style::default().fg(Color::Yellow))),
+            Line::from(Span::styled("Press Esc/Enter to close, Ctrl+C to quit app", Style::default().fg(Color::Yellow))),
         ];
         
         let paragraph = Paragraph::new(error_text)

@@ -18,6 +18,7 @@ pub struct SearchPopup {
     pub autocomplete_items: Vec<String>,
     pub autocomplete_selected: usize,
     pub autocomplete_scroll_offset: usize,
+    pub autocomplete_context: AutocompleteContext,
 }
 
 impl SearchPopup {
@@ -32,6 +33,7 @@ impl SearchPopup {
             autocomplete_items: Vec::new(),
             autocomplete_selected: 0,
             autocomplete_scroll_offset: 0,
+            autocomplete_context: AutocompleteContext::FieldName,
         }
     }
 
@@ -130,6 +132,8 @@ impl SearchPopup {
         self.autocomplete_items = suggestions;
         self.autocomplete_selected = 0;
         self.autocomplete_scroll_offset = 0;
+        // Detect and store current context
+        self.autocomplete_context = detect_context(&self.input, self.cursor_position);
         // Show autocomplete automatically for discoverability
         self.autocomplete_shown = !self.autocomplete_items.is_empty();
     }
@@ -164,6 +168,24 @@ impl SearchPopup {
             self.autocomplete_scroll_offset = self.autocomplete_selected;
         } else if self.autocomplete_selected >= self.autocomplete_scroll_offset + visible_items {
             self.autocomplete_scroll_offset = self.autocomplete_selected - visible_items + 1;
+        }
+    }
+
+    fn get_icon_for_field(&self, field_name: &str) -> &str {
+        match field_name {
+            "name" => "📻 ",
+            "country" => "🌍 ",
+            "countrycode" => "🏴 ",
+            "state" => "📍 ",
+            "language" => "🗣️ ",
+            "tag" => "🏷️ ",
+            "codec" => "🎵 ",
+            "bitrate_min" | "bitrate_max" => "🔊 ",
+            "order" => "📊 ",
+            "reverse" => "🔄 ",
+            "hidebroken" => "🔧 ",
+            "is_https" => "🔒 ",
+            _ => "🔍 ",
         }
     }
 
@@ -278,7 +300,18 @@ impl SearchPopup {
                 } else {
                     Style::default()
                 };
-                ListItem::new(format!("{}", item)).style(style)
+                // Only add icon if we're showing field names, not field values
+                let display_text = match &self.autocomplete_context {
+                    AutocompleteContext::FieldName => {
+                        let icon = self.get_icon_for_field(item);
+                        format!("{}{}", icon, item)
+                    }
+                    AutocompleteContext::FieldValue(_) => {
+                        // No icon for field values (like "France", "Germany", etc.)
+                        item.to_string()
+                    }
+                };
+                ListItem::new(display_text).style(style)
             })
             .collect();
 
