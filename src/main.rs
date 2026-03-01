@@ -19,7 +19,7 @@ use tokio::time::interval;
 use tracing::info;
 use tracing_subscriber;
 
-use app::{App, BrowseMode};
+use app::App;
 use config::get_data_dir;
 use player::{AudioPlayer, PlayerCommand};
 use search::{get_suggestions, parse_query};
@@ -345,25 +345,6 @@ async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) 
         return;
     }
 
-    if app.browse_list_mode {
-        match key {
-            KeyCode::Up => app.select_prev(),
-            KeyCode::Down => app.select_next(),
-            KeyCode::PageUp => app.page_up(),
-            KeyCode::PageDown => app.page_down(),
-            KeyCode::Enter => {
-                if let Err(e) = app.select_from_browse_list().await {
-                    tracing::error!("Failed to load stations: {}", e);
-                    app.show_error(format!("Failed to load stations: {}", e));
-                }
-            }
-            KeyCode::Esc => app.browse_list_mode = false,
-            KeyCode::Char('q') | KeyCode::Char('Q') => app.quit(),
-            _ => {}
-        }
-        return;
-    }
-
     match key {
         KeyCode::Char('?') => {
             app.help_popup = true;
@@ -461,51 +442,16 @@ async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) 
             app.next_tab();
         }
         KeyCode::Char('1') => {
-            if app.current_tab == app::Tab::Browse {
-                app.set_browse_mode(BrowseMode::Popular);
-                if let Err(e) = app.load_popular_stations().await {
-                    tracing::error!("Failed to load popular stations: {}", e);
-                }
-            } else {
-                app.current_tab = app::Tab::Browse;
-                app.reload_current_tab();
-            }
+            app.current_tab = app::Tab::Browse;
+            app.reload_current_tab();
         }
         KeyCode::Char('2') => {
-            if app.current_tab == app::Tab::Browse {
-                app.set_browse_mode(BrowseMode::ByCountry);
-                app.browse_list_mode = true;
-            } else {
-                app.current_tab = app::Tab::Favorites;
-                app.reload_current_tab();
-            }
+            app.current_tab = app::Tab::Favorites;
+            app.reload_current_tab();
         }
         KeyCode::Char('3') => {
-            if app.current_tab == app::Tab::Browse {
-                app.set_browse_mode(BrowseMode::ByGenre);
-                app.browse_list_mode = true;
-            } else {
-                app.current_tab = app::Tab::History;
-                app.reload_current_tab();
-            }
-        }
-        KeyCode::Char('4') => {
-            if app.current_tab != app::Tab::Browse {
-                app.current_tab = app::Tab::Browse;
-                app.reload_current_tab();
-            }
-        }
-        KeyCode::F(2) => {
-            app.set_browse_mode(BrowseMode::ByCountry);
-            app.browse_list_mode = true;
-        }
-        KeyCode::F(3) => {
-            app.set_browse_mode(BrowseMode::ByGenre);
-            app.browse_list_mode = true;
-        }
-        KeyCode::F(4) => {
-            app.set_browse_mode(BrowseMode::ByLanguage);
-            app.browse_list_mode = true;
+            app.current_tab = app::Tab::History;
+            app.reload_current_tab();
         }
         _ => {}
     }

@@ -283,6 +283,7 @@ impl RadioBrowserClient {
         params.push(format!("offset={}", query.offset));
 
         let endpoint = format!("/json/stations/search?{}", params.join("&"));
+        tracing::info!("advanced_search: API endpoint: {}", endpoint);
         self.get(&endpoint).await
     }
 }

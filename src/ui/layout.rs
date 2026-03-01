@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::{App, BrowseMode, Tab};
+use crate::app::{App, Tab};
 use crate::player::PlayerState;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
@@ -40,23 +40,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 }
 
 fn draw_main_content(f: &mut Frame, app: &mut App, area: Rect) {
-    // Build tab titles with color highlighting
-    let mode_suffix = if matches!(app.current_tab, Tab::Browse) {
-        let mode_name = match app.browse_mode {
-            BrowseMode::Popular => "Popular",
-            BrowseMode::Search => "Search",
-            BrowseMode::ByCountry => "By Country",
-            BrowseMode::ByGenre => "By Genre",
-            BrowseMode::ByLanguage => "By Language",
-        };
-        format!(": {}", mode_name)
-    } else {
-        String::new()
-    };
-    
+    // Build tab titles
     let tab_title = Line::from(vec![
         Span::styled(
-            format!("Browse(1){}", mode_suffix),
+            "Browse(1)",
             if matches!(app.current_tab, Tab::Browse) {
                 Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
             } else {
@@ -83,58 +70,8 @@ fn draw_main_content(f: &mut Frame, app: &mut App, area: Rect) {
         ),
     ]);
     
-    match app.current_tab {
-        Tab::Browse => draw_browse_tab(f, app, area, tab_title),
-        Tab::Favorites => draw_station_list(f, app, area, tab_title),
-        Tab::History => draw_station_list(f, app, area, tab_title),
-    }
-}
-
-fn draw_browse_tab(f: &mut Frame, app: &mut App, area: Rect, title: Line) {
-    if app.browse_list_mode {
-        // Show browse list (countries, genres, languages)
-        draw_browse_list(f, app, area);
-    } else {
-        // Show station list directly (browse mode shown in tab title)
-        draw_station_list(f, app, area, title);
-    }
-}
-
-fn draw_browse_list(f: &mut Frame, app: &App, area: Rect) {
-    let (title, items) = match app.browse_mode {
-        BrowseMode::ByCountry => ("Countries", &app.countries),
-        BrowseMode::ByGenre => ("Genres", &app.genres),
-        BrowseMode::ByLanguage => ("Languages", &app.languages),
-        _ => ("", &vec![]),
-    };
-
-    let list_items: Vec<ListItem> = items
-        .iter()
-        .enumerate()
-        .map(|(i, item)| {
-            let style = if i == app.browse_list_index {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::White)
-            };
-            ListItem::new(item.as_str()).style(style)
-        })
-        .collect();
-
-    let list = List::new(list_items)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(format!("{} (Press Enter to select, Esc to go back)", title)),
-        );
-
-    let mut state = ListState::default();
-    state.select(Some(app.browse_list_index));
-    
-    f.render_stateful_widget(list, area, &mut state);
+    // All tabs just show station lists now
+    draw_station_list(f, app, area, tab_title);
 }
 
 fn draw_station_list(f: &mut Frame, app: &App, area: Rect, title: Line) {
@@ -142,7 +79,7 @@ fn draw_station_list(f: &mut Frame, app: &App, area: Rect, title: Line) {
         let text = if app.loading {
             "Loading stations..."
         } else {
-            "No stations loaded.\n\nPress F1 to load Popular Stations\nPress / to Search by name\nPress 2 for Countries, 3 for Genres, 4 for Languages"
+            "No stations loaded.\n\nPress / to search for stations\nPress F1 to load popular stations"
         };
         
         let paragraph = Paragraph::new(text)
