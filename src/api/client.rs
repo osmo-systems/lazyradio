@@ -223,4 +223,66 @@ impl RadioBrowserClient {
         let endpoint = format!("/json/vote/{}", station_uuid);
         self.post(&endpoint).await
     }
+
+    // Advanced search with multiple parameters
+    pub async fn advanced_search(
+        &mut self,
+        query: &crate::search::SearchQuery,
+    ) -> Result<Vec<Station>> {
+        let mut params = Vec::new();
+
+        // Add search parameters
+        if let Some(name) = &query.name {
+            params.push(format!("name={}", urlencoding::encode(name)));
+        }
+        if let Some(countries) = &query.country {
+            // Multiple countries = OR logic, join with comma
+            let country_str = countries.join(",");
+            params.push(format!("country={}", urlencoding::encode(&country_str)));
+        }
+        if let Some(countrycode) = &query.countrycode {
+            params.push(format!("countrycode={}", urlencoding::encode(countrycode)));
+        }
+        if let Some(state) = &query.state {
+            params.push(format!("state={}", urlencoding::encode(state)));
+        }
+        if let Some(languages) = &query.language {
+            // Multiple languages = OR logic, join with comma
+            let language_str = languages.join(",");
+            params.push(format!("language={}", urlencoding::encode(&language_str)));
+        }
+        if let Some(tags) = &query.tags {
+            // tagList = AND logic (all tags must match)
+            let tag_str = tags.join(",");
+            params.push(format!("tagList={}", urlencoding::encode(&tag_str)));
+        }
+        if let Some(codec) = &query.codec {
+            params.push(format!("codec={}", urlencoding::encode(codec)));
+        }
+        if let Some(bitrate_min) = query.bitrate_min {
+            params.push(format!("bitrateMin={}", bitrate_min));
+        }
+        if let Some(bitrate_max) = query.bitrate_max {
+            params.push(format!("bitrateMax={}", bitrate_max));
+        }
+        if let Some(order) = &query.order {
+            params.push(format!("order={}", order));
+        }
+        if let Some(reverse) = query.reverse {
+            params.push(format!("reverse={}", reverse));
+        }
+        if let Some(hidebroken) = query.hidebroken {
+            params.push(format!("hidebroken={}", hidebroken));
+        }
+        if let Some(is_https) = query.is_https {
+            params.push(format!("is_https={}", is_https));
+        }
+
+        // Add pagination parameters
+        params.push(format!("limit={}", query.limit));
+        params.push(format!("offset={}", query.offset));
+
+        let endpoint = format!("/json/stations/search?{}", params.join("&"));
+        self.get(&endpoint).await
+    }
 }

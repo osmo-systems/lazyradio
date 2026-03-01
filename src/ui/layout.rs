@@ -28,6 +28,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         draw_help_popup(f);
     }
     
+    // Draw search popup
+    if let Some(ref popup) = app.search_popup {
+        popup.render(f, f.area());
+    }
+    
     // Draw error popup on top of everything if present
     if app.error_popup.is_some() {
         draw_error_popup(f, app);
@@ -188,11 +193,30 @@ fn draw_station_list(f: &mut Frame, app: &App, area: Rect, title: Line) {
     title_spans.push(Span::raw(" stations)"));
     let full_title = Line::from(title_spans);
 
-    let list = List::new(list_items).block(
+    // Create pagination info for the right side if we have pagination
+    let block = if app.current_page > 0 {
+        let page_info = if app.is_last_page {
+            format!("Page {}", app.current_page)
+        } else {
+            format!("Page {} →", app.current_page)
+        };
         Block::default()
             .borders(Borders::ALL)
-            .title(full_title),
-    );
+            .title(full_title)
+            .title(
+                ratatui::widgets::block::Title::from(
+                    Span::styled(page_info, Style::default().fg(Color::Yellow))
+                )
+                .alignment(Alignment::Right)
+                .position(ratatui::widgets::block::Position::Top)
+            )
+    } else {
+        Block::default()
+            .borders(Borders::ALL)
+            .title(full_title)
+    };
+
+    let list = List::new(list_items).block(block);
 
     let mut state = ListState::default();
     state.select(Some(app.selected_index));
@@ -310,38 +334,30 @@ fn draw_player(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(paragraph, area);
 }
 
-fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
-    let line = if app.search_mode {
-        // Search mode display
-        Line::from(vec![
-            Span::styled("Search: ", Style::default().fg(Color::Cyan)),
-            Span::raw(&app.search_query),
-            Span::styled("_", Style::default().add_modifier(Modifier::SLOW_BLINK)),
-            Span::styled(" | Enter:Search  Esc:Cancel", Style::default().fg(Color::DarkGray)),
-        ])
-    } else {
-        // Main shortcuts - compact single line
-        Line::from(vec![
-            Span::styled("↑↓", Style::default().fg(Color::Yellow)),
-            Span::raw(":Nav  "),
-            Span::styled("Enter", Style::default().fg(Color::Yellow)),
-            Span::raw(":Play  "),
-            Span::styled("Space", Style::default().fg(Color::Yellow)),
-            Span::raw(":Pause  "),
-            Span::styled("S", Style::default().fg(Color::Yellow)),
-            Span::raw(":Stop  "),
-            Span::styled("+-", Style::default().fg(Color::Yellow)),
-            Span::raw(":Vol  "),
-            Span::styled("F", Style::default().fg(Color::Yellow)),
-            Span::raw(":Fav  "),
-            Span::styled("[]", Style::default().fg(Color::Yellow)),
-            Span::raw(":Switch tab  "),
-            Span::styled("?", Style::default().fg(Color::Yellow)),
-            Span::raw(":Help  "),
-            Span::styled("Ctrl+C", Style::default().fg(Color::Yellow)),
-            Span::raw(":Quit"),
-        ])
-    };
+fn draw_status_bar(f: &mut Frame, _app: &App, area: Rect) {
+    // Main shortcuts - compact single line
+    let line = Line::from(vec![
+        Span::styled("↑↓", Style::default().fg(Color::Yellow)),
+        Span::raw(":Nav  "),
+        Span::styled("Enter", Style::default().fg(Color::Yellow)),
+        Span::raw(":Play  "),
+        Span::styled("Space", Style::default().fg(Color::Yellow)),
+        Span::raw(":Pause  "),
+        Span::styled("S", Style::default().fg(Color::Yellow)),
+        Span::raw(":Stop  "),
+        Span::styled("+-", Style::default().fg(Color::Yellow)),
+        Span::raw(":Vol  "),
+        Span::styled("F", Style::default().fg(Color::Yellow)),
+        Span::raw(":Fav  "),
+        Span::styled("/", Style::default().fg(Color::Yellow)),
+        Span::raw(":Search  "),
+        Span::styled("[]", Style::default().fg(Color::Yellow)),
+        Span::raw(":Switch tab  "),
+        Span::styled("?", Style::default().fg(Color::Yellow)),
+        Span::raw(":Help  "),
+        Span::styled("Ctrl+C", Style::default().fg(Color::Yellow)),
+        Span::raw(":Quit"),
+    ]);
 
     let paragraph = Paragraph::new(line)
         .block(Block::default().borders(Borders::ALL).title("Shortcuts"))

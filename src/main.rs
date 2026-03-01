@@ -2,6 +2,7 @@ mod api;
 mod app;
 mod config;
 mod player;
+mod search;
 mod storage;
 mod ui;
 
@@ -21,6 +22,7 @@ use tracing_subscriber;
 use app::{App, BrowseMode};
 use config::get_data_dir;
 use player::{AudioPlayer, PlayerCommand};
+use search::{get_suggestions, parse_query};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -60,12 +62,9 @@ async fn main() -> Result<()> {
             let mut app = App::new(data_dir.clone(), api_client).await?;
             app.show_error(format!("Failed to initialize audio device: {}\n\nPlease check that your audio output is properly configured.", e));
             
-            // Load initial data (so the app shows something)
-            if let Err(load_err) = app.load_browse_lists().await {
-                tracing::warn!("Failed to load browse lists: {}", load_err);
-            }
-            if let Err(load_err) = app.load_popular_stations().await {
-                tracing::warn!("Failed to load popular stations: {}", load_err);
+            // Load initial data (popular stations with default query)
+            if let Err(load_err) = app.execute_search().await {
+                tracing::warn!("Failed to load initial stations: {}", load_err);
             }
             
             // Setup terminal to show error
@@ -114,12 +113,9 @@ async fn main() -> Result<()> {
     
     info!("App initialized");
 
-    // Load initial data
-    if let Err(e) = app.load_browse_lists().await {
-        tracing::warn!("Failed to load browse lists: {}", e);
-    }
-    if let Err(e) = app.load_popular_stations().await {
-        tracing::error!("Failed to load popular stations: {}", e);
+    // Load initial data (popular stations with default query)
+    if let Err(e) = app.execute_search().await {
+        tracing::error!("Failed to load initial stations: {}", e);
         app.status_message = Some(format!("Failed to load stations: {}. Check network connection.", e));
     }
     
@@ -263,17 +259,76 @@ async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) 
         return;
     }
     
-    if app.search_mode {
+    // Handle search popup
+    if app.search_popup.is_some() {
         match key {
-            KeyCode::Char(c) => app.add_search_char(c),
-            KeyCode::Backspace => app.remove_search_char(),
-            KeyCode::Enter => {
-                if let Err(e) = app.perform_search().await {
-                    tracing::error!("Search failed: {}", e);
-                    app.show_error(format!("Search failed: {}", e));
+            KeyCode::Char(c) => {
+                if let Some(popup) = &mut app.search_popup {
+                    popup.insert_char(c);
+                    let suggestions = get_suggestions(&popup.input, popup.cursor_position, &app.autocomplete_data);
+                    popup.update_autocomplete(suggestions);
                 }
             }
-            KeyCode::Esc => app.toggle_search_mode(),
+            KeyCode::Backspace => {
+                if let Some(popup) = &mut app.search_popup {
+                    popup.delete_char();
+                    let suggestions = get_suggestions(&popup.input, popup.cursor_position, &app.autocomplete_data);
+                    popup.update_autocomplete(suggestions);
+                }
+            }
+            KeyCode::Tab => {
+                if let Some(popup) = &mut app.search_popup {
+                    popup.accept_autocomplete();
+                    let suggestions = get_suggestions(&popup.input, popup.cursor_position, &app.autocomplete_data);
+                    popup.update_autocomplete(suggestions);
+                }
+            }
+            KeyCode::Down => {
+                if let Some(popup) = &mut app.search_popup {
+                    if popup.autocomplete_shown {
+                        popup.autocomplete_next();
+                    }
+                }
+            }
+            KeyCode::Up => {
+                if let Some(popup) = &mut app.search_popup {
+                    if popup.autocomplete_shown {
+                        popup.autocomplete_prev();
+                    }
+                }
+            }
+            KeyCode::Enter => {
+                if let Some(popup) = &mut app.search_popup {
+                    // Always execute search when Enter is pressed
+                    let query_str = popup.get_query();
+                    match parse_query(query_str) {
+                        Ok(query) => {
+                            app.current_query = query;
+                            app.close_search_popup();
+                            if let Err(e) = app.execute_search().await {
+                                tracing::error!("Search failed: {}", e);
+                                app.show_error(format!("Search failed: {}", e));
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("Query parse error: {:?}", e);
+                            app.show_error(format!("Invalid query: {}", e));
+                            // Keep popup open on error
+                        }
+                    }
+                }
+            }
+            KeyCode::Esc => {
+                if let Some(popup) = &mut app.search_popup {
+                    if popup.autocomplete_shown {
+                        // First Esc closes autocomplete
+                        popup.autocomplete_shown = false;
+                    } else {
+                        // Second Esc closes popup
+                        app.close_search_popup();
+                    }
+                }
+            }
             _ => {}
         }
         return;
@@ -305,8 +360,39 @@ async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) 
         KeyCode::Char('q') | KeyCode::Char('Q') => app.quit(),
         KeyCode::Up => app.select_prev(),
         KeyCode::Down => app.select_next(),
-        KeyCode::PageUp => app.page_up(),
-        KeyCode::PageDown => app.page_down(),
+        KeyCode::PageUp => {
+            // If we're viewing search results with pagination, go to previous page
+            if app.current_page > 1 {
+                if let Err(e) = app.prev_page().await {
+                    tracing::error!("Failed to load previous page: {}", e);
+                    app.show_error(format!("Failed to load page: {}", e));
+                }
+            } else {
+                // Otherwise, page up within the current list
+                app.page_up();
+            }
+        }
+        KeyCode::PageDown => {
+            // If we're viewing search results with pagination, go to next page
+            if !app.is_last_page {
+                if let Err(e) = app.next_page().await {
+                    tracing::error!("Failed to load next page: {}", e);
+                    app.show_error(format!("Failed to load page: {}", e));
+                }
+            } else {
+                // Otherwise, page down within the current list
+                app.page_down();
+            }
+        }
+        KeyCode::Home => {
+            // Go to first page of search results
+            if app.current_page > 1 {
+                if let Err(e) = app.first_page().await {
+                    tracing::error!("Failed to load first page: {}", e);
+                    app.show_error(format!("Failed to load page: {}", e));
+                }
+            }
+        }
         KeyCode::Enter => {
             if let Err(e) = app.play_selected().await {
                 tracing::error!("Failed to play station: {}", e);
@@ -342,13 +428,12 @@ async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) 
                 tracing::error!("Failed to vote: {}", e);
             }
         }
-        KeyCode::Char('/') => app.toggle_search_mode(),
+        KeyCode::Char('/') => app.open_search_popup(),
         KeyCode::F(1) => {
-            // F1 to reload popular stations
-            app.set_browse_mode(BrowseMode::Popular);
-            if let Err(e) = app.load_popular_stations().await {
-                tracing::error!("Failed to load popular stations: {}", e);
-                app.show_error(format!("Failed to load stations: {}", e));
+            // F1 to reload default query (popular stations)
+            if let Err(e) = app.first_page().await {
+                tracing::error!("Failed to reload stations: {}", e);
+                app.show_error(format!("Failed to reload stations: {}", e));
             }
         }
         KeyCode::Tab => {
@@ -393,10 +478,10 @@ async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) 
                 app.reload_current_tab();
             }
         }
-        KeyCode::F(1) => {
-            app.set_browse_mode(BrowseMode::Popular);
-            if let Err(e) = app.load_popular_stations().await {
-                tracing::error!("Failed to load popular stations: {}", e);
+        KeyCode::Char('4') => {
+            if app.current_tab != app::Tab::Browse {
+                app.current_tab = app::Tab::Browse;
+                app.reload_current_tab();
             }
         }
         KeyCode::F(2) => {
@@ -410,12 +495,6 @@ async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) 
         KeyCode::F(4) => {
             app.set_browse_mode(BrowseMode::ByLanguage);
             app.browse_list_mode = true;
-        }
-        KeyCode::Char('4') => {
-            if app.current_tab != app::Tab::Browse {
-                app.current_tab = app::Tab::Browse;
-                app.reload_current_tab();
-            }
         }
         _ => {}
     }

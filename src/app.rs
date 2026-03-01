@@ -1,11 +1,14 @@
 use anyhow::Result;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 use crate::api::{RadioBrowserClient, Station};
 use crate::config::Config;
 use crate::player::{PlayerCommand, PlayerInfo};
-use crate::storage::{CacheManager, FavoritesManager, HistoryManager};
+use crate::search::{AutocompleteData, SearchQuery, is_default_query, format_query};
+use crate::storage::{CacheManager, FavoritesManager, HistoryManager, SearchHistoryManager};
+use crate::ui::SearchPopup;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Tab {
@@ -34,9 +37,15 @@ pub struct App {
     pub selected_index: usize,
     pub scroll_offset: usize,
     
-    // Search/filter
-    pub search_query: String,
-    pub search_mode: bool,
+    // Advanced search
+    pub search_popup: Option<SearchPopup>,
+    pub current_query: SearchQuery,
+    pub autocomplete_data: AutocompleteData,
+    
+    // Pagination
+    pub current_page: usize,
+    pub pages_cache: HashMap<usize, Vec<Station>>,
+    pub is_last_page: bool,
     
     // Player
     pub player_info: PlayerInfo,
@@ -47,6 +56,7 @@ pub struct App {
     pub favorites: FavoritesManager,
     pub history: HistoryManager,
     pub cache: CacheManager,
+    pub search_history: SearchHistoryManager,
     pub config: Config,
     pub data_dir: PathBuf,
     
@@ -78,12 +88,13 @@ pub struct App {
 impl App {
     pub async fn new(
         data_dir: PathBuf,
-        api_client: RadioBrowserClient,
+        mut api_client: RadioBrowserClient,
     ) -> Result<Self> {
         let config = Config::load(&data_dir)?;
         let favorites = FavoritesManager::new(&data_dir)?;
         let history = HistoryManager::new(&data_dir, config.max_history_entries)?;
         let cache = CacheManager::new(&data_dir, config.cache_duration_secs)?;
+        let search_history = SearchHistoryManager::new(&data_dir)?;
         
         let (player_cmd_tx, _player_cmd_rx) = mpsc::unbounded_channel();
         
@@ -97,6 +108,13 @@ impl App {
             error_message: None,
         };
 
+        // Load autocomplete data
+        let autocomplete_data = AutocompleteData::load(&mut api_client).await
+            .unwrap_or_default(); // Use default if loading fails
+
+        // Start with default query (popular stations)
+        let current_query = SearchQuery::default();
+
         let app = Self {
             running: true,
             current_tab: Tab::Browse,
@@ -107,8 +125,13 @@ impl App {
             selected_index: 0,
             scroll_offset: 0,
             
-            search_query: String::new(),
-            search_mode: false,
+            search_popup: None,
+            current_query,
+            autocomplete_data,
+            
+            current_page: 1,
+            pages_cache: HashMap::new(),
+            is_last_page: false,
             
             player_info,
             player_cmd_tx,
@@ -117,6 +140,7 @@ impl App {
             favorites,
             history,
             cache,
+            search_history,
             config,
             data_dir,
             
@@ -147,9 +171,166 @@ impl App {
     
     pub fn close_error_popup(&mut self) {
         self.error_popup = None;
-        // Also clear player error if it exists
-        if self.player_info.error_message.is_some() {
-            self.player_info.error_message = None;
+    }
+
+    // Search popup methods
+
+    pub fn open_search_popup(&mut self) {
+        use crate::search::get_suggestions;
+        
+        // Pre-fill with current query if not default
+        let initial_query = if is_default_query(&self.current_query) {
+            String::new()
+        } else {
+            format_query(&self.current_query)
+        };
+        
+        let mut popup = SearchPopup::new(initial_query.clone());
+        
+        // Initialize autocomplete with field names (since we start at position 0 or end)
+        let suggestions = get_suggestions(&initial_query, popup.cursor_position, &self.autocomplete_data);
+        popup.update_autocomplete(suggestions);
+        
+        self.search_popup = Some(popup);
+    }
+
+    pub fn close_search_popup(&mut self) {
+        self.search_popup = None;
+    }
+
+    pub async fn execute_search(&mut self) -> Result<()> {
+        tracing::info!("Executing search with query: {:?}", self.current_query);
+        
+        // Use the already-set current_query
+        let mut query = self.current_query.clone();
+        query.reset_pagination();
+        
+        // Clear cache and reset pagination
+        self.pages_cache.clear();
+        self.current_page = 1;
+        self.is_last_page = false;
+        
+        // Load first page
+        self.loading = true;
+        match self.api_client.advanced_search(&query).await {
+            Ok(stations) => {
+                tracing::info!("Search returned {} stations", stations.len());
+                self.is_last_page = stations.len() < query.limit;
+                
+                // Cache the page
+                self.pages_cache.insert(1, stations.clone());
+                
+                self.stations = stations;
+                self.browse_stations = self.stations.clone(); // Update browse cache
+                self.selected_index = 0;
+                self.scroll_offset = 0;
+                self.loading = false;
+                
+                // Add to search history if not default query
+                if !is_default_query(&query) {
+                    let query_str = format_query(&query);
+                    if let Err(e) = self.search_history.add_query(query_str, Some(self.stations.len())) {
+                        tracing::warn!("Failed to save search history: {}", e);
+                    }
+                }
+                
+                let msg = format!("Found {} stations", self.stations.len());
+                self.status_message = Some(msg.clone());
+                self.add_log(msg);
+                
+                // Close popup if it was open
+                if self.search_popup.is_some() {
+                    self.close_search_popup();
+                }
+                
+                Ok(())
+            }
+            Err(e) => {
+                tracing::error!("Search failed: {}", e);
+                self.loading = false;
+                // Network error - show error popup
+                self.show_error(format!("Search failed: {}", e));
+                Err(e)
+            }
+        }
+    }
+
+    pub async fn load_page(&mut self, page: usize) -> Result<()> {
+        if page == 0 {
+            return Ok(());
+        }
+        
+        // Check cache first
+        if let Some(stations) = self.pages_cache.get(&page) {
+            self.stations = stations.clone();
+            self.current_page = page;
+            self.selected_index = 0;
+            self.scroll_offset = 0;
+            return Ok(());
+        }
+        
+        // Not in cache, fetch from API
+        let mut query = self.current_query.clone();
+        query.offset = (page - 1) * query.limit;
+        
+        self.loading = true;
+        match self.api_client.advanced_search(&query).await {
+            Ok(stations) => {
+                self.is_last_page = stations.len() < query.limit;
+                
+                // Cache the page (with LRU eviction if needed)
+                if self.pages_cache.len() >= 5 {
+                    // Simple LRU: remove the page furthest from current
+                    let current = self.current_page;
+                    let to_remove = self.pages_cache.keys()
+                        .map(|k| (*k, (*k as i32 - current as i32).abs()))
+                        .max_by_key(|(_, dist)| *dist)
+                        .map(|(k, _)| k);
+                    
+                    if let Some(key) = to_remove {
+                        self.pages_cache.remove(&key);
+                    }
+                }
+                
+                self.pages_cache.insert(page, stations.clone());
+                
+                self.stations = stations;
+                self.current_page = page;
+                self.selected_index = 0;
+                self.scroll_offset = 0;
+                self.loading = false;
+                
+                Ok(())
+            }
+            Err(e) => {
+                self.loading = false;
+                self.show_error(format!("Failed to load page: {}", e));
+                Err(e)
+            }
+        }
+    }
+
+    pub async fn next_page(&mut self) -> Result<()> {
+        if !self.is_last_page {
+            self.load_page(self.current_page + 1).await
+        } else {
+            Ok(())
+        }
+    }
+
+    pub async fn prev_page(&mut self) -> Result<()> {
+        if self.current_page > 1 {
+            self.load_page(self.current_page - 1).await
+        } else {
+            Ok(())
+        }
+    }
+
+    pub async fn first_page(&mut self) -> Result<()> {
+        if self.current_page != 1 {
+            self.load_page(1).await
+        } else {
+            Ok(())
         }
     }
 
@@ -422,55 +603,6 @@ impl App {
                     self.status_message = Some(format!("Failed to vote: {}", e));
                 }
             }
-        }
-        Ok(())
-    }
-
-    pub fn toggle_search_mode(&mut self) {
-        self.search_mode = !self.search_mode;
-        if self.search_mode {
-            self.search_query.clear();
-        }
-    }
-
-    pub fn add_search_char(&mut self, c: char) {
-        if self.search_mode {
-            self.search_query.push(c);
-        }
-    }
-
-    pub fn remove_search_char(&mut self) {
-        if self.search_mode {
-            self.search_query.pop();
-        }
-    }
-
-    pub async fn perform_search(&mut self) -> Result<()> {
-        if !self.search_query.is_empty() {
-            self.loading = true;
-            self.browse_mode = BrowseMode::Search;
-            self.browse_list_mode = false;
-            
-            self.add_log(format!("Searching for '{}'...", self.search_query));
-            
-            match self.api_client.search_stations(&self.search_query, self.config.station_limit).await {
-                Ok(stations) => {
-                    self.stations = stations;
-                    self.browse_stations = self.stations.clone(); // Cache for Browse tab
-                    self.selected_index = 0;
-                    self.search_mode = false;
-                    let msg = format!("Found {} stations", self.stations.len());
-                    self.status_message = Some(msg.clone());
-                    self.add_log(msg);
-                }
-                Err(e) => {
-                    let msg = format!("Search failed: {}", e);
-                    self.status_message = Some(msg.clone());
-                    self.add_log(msg);
-                }
-            }
-            
-            self.loading = false;
         }
         Ok(())
     }
