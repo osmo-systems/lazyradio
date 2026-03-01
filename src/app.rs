@@ -46,6 +46,7 @@ pub struct App {
     pub current_page: usize,
     pub pages_cache: HashMap<usize, Vec<Station>>,
     pub is_last_page: bool,
+    pub highest_page_loaded: usize, // Track the highest page we've successfully loaded
     
     // Player
     pub player_info: PlayerInfo,
@@ -64,6 +65,7 @@ pub struct App {
     pub loading: bool,
     pub status_message: Option<String>,
     pub pending_search: bool, // Flag to trigger search on next loop iteration
+    pub pending_page_change: Option<i32>, // +1 for next, -1 for prev
     
     // Error popup
     pub error_popup: Option<String>,
@@ -139,6 +141,7 @@ impl App {
             current_page: 1,
             pages_cache: HashMap::new(),
             is_last_page: false,
+            highest_page_loaded: 0,
             
             player_info,
             player_cmd_tx,
@@ -153,6 +156,7 @@ impl App {
             
             loading: false,
             pending_search: false,
+            pending_page_change: None,
             status_message: None,
             
             error_popup: None,
@@ -235,6 +239,7 @@ impl App {
         self.pages_cache.clear();
         self.current_page = 1;
         self.is_last_page = false;
+        self.highest_page_loaded = 0;
         
         tracing::info!("execute_search: Cache cleared, calling API");
         
@@ -243,7 +248,14 @@ impl App {
         match self.api_client.advanced_search(&query).await {
             Ok(stations) => {
                 tracing::info!("execute_search: API returned {} stations", stations.len());
+                tracing::info!("execute_search: query.limit = {}", query.limit);
                 self.is_last_page = stations.len() < query.limit;
+                tracing::info!("execute_search: is_last_page = {}", self.is_last_page);
+                
+                // Track that we've loaded page 1
+                if !stations.is_empty() {
+                    self.highest_page_loaded = 1;
+                }
                 
                 // Cache the page
                 self.pages_cache.insert(1, stations.clone());
@@ -264,7 +276,7 @@ impl App {
                     }
                 }
                 
-                let msg = format!("Found {} stations", self.stations.len());
+                let msg = format!("Found {} stations (is_last_page={})", self.stations.len(), self.is_last_page);
                 self.status_message = Some(msg.clone());
                 self.add_log(msg);
                 
@@ -275,7 +287,7 @@ impl App {
                     self.close_search_popup();
                 }
                 
-                tracing::info!("execute_search: Completed successfully");
+                tracing::info!("execute_search: Completed successfully, highest_page={}", self.highest_page_loaded);
                 Ok(())
             }
             Err(e) => {
@@ -303,16 +315,28 @@ impl App {
             self.selected_index = 0;
             self.scroll_offset = 0;
             
-            // Update is_last_page: if cached page has fewer stations than limit, it's the last page
-            // Otherwise, we can't know for sure without fetching, so assume there might be more
+            // Determine if this is the last page:
+            // 1. If this cached page has < limit stations, it's definitely the last page
+            // 2. If we have the next page in cache, it's not the last page
+            // 3. If this page number >= highest_page_loaded and it has full stations, we don't know yet
             let query = &self.current_query;
-            self.is_last_page = stations.len() < query.limit;
+            if stations.len() < query.limit {
+                // This page didn't fill up, so there are no more pages
+                self.is_last_page = true;
+            } else if self.pages_cache.contains_key(&(page + 1)) {
+                // We have the next page cached, so there are more pages
+                self.is_last_page = false;
+            } else if page >= self.highest_page_loaded {
+                // We haven't loaded beyond this page yet, assume there might be more
+                self.is_last_page = false;
+            }
+            // If page < highest_page_loaded, keep is_last_page unchanged (we've been further)
             
             let msg = format!("Loaded page {} from cache ({} stations)", page, stations.len());
             self.status_message = Some(msg.clone());
             self.add_log(msg);
             
-            tracing::info!("load_page: Cache loaded, is_last_page now={}", self.is_last_page);
+            tracing::info!("load_page: Cache loaded, is_last_page={}", self.is_last_page);
             
             return Ok(());
         }
@@ -328,6 +352,12 @@ impl App {
             Ok(stations) => {
                 tracing::info!("load_page: API returned {} stations for page {}", stations.len(), page);
                 self.is_last_page = stations.len() < query.limit;
+                
+                // Track the highest page we've successfully loaded
+                if page > self.highest_page_loaded && !stations.is_empty() {
+                    self.highest_page_loaded = page;
+                    tracing::info!("load_page: Updated highest_page_loaded to {}", self.highest_page_loaded);
+                }
                 
                 // Cache the page (with LRU eviction if needed)
                 if self.pages_cache.len() >= 5 {
@@ -355,7 +385,7 @@ impl App {
                 self.status_message = Some(msg.clone());
                 self.add_log(msg);
                 
-                tracing::info!("load_page: Success, is_last_page={}", self.is_last_page);
+                tracing::info!("load_page: Success, is_last_page={}, highest_page={}", self.is_last_page, self.highest_page_loaded);
                 
                 Ok(())
             }
@@ -370,9 +400,11 @@ impl App {
     pub async fn next_page(&mut self) -> Result<()> {
         tracing::info!("next_page: called, is_last_page={}, current_page={}", self.is_last_page, self.current_page);
         if !self.is_last_page {
+            tracing::info!("next_page: calling load_page({})", self.current_page + 1);
             self.load_page(self.current_page + 1).await
         } else {
             tracing::info!("next_page: blocked because is_last_page=true");
+            self.add_log("Cannot go to next page: already on last page".to_string());
             Ok(())
         }
     }

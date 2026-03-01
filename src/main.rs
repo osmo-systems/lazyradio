@@ -20,7 +20,7 @@ use tracing::info;
 use tracing_subscriber;
 
 use app::App;
-use config::get_data_dir;
+use config::{cleanup_old_logs, get_data_dir};
 use player::{AudioPlayer, PlayerCommand};
 use search::{get_suggestions, parse_query};
 
@@ -35,6 +35,11 @@ async fn main() -> Result<()> {
         .init();
 
     info!("Starting Web Radio TUI");
+
+    // Clean up old log files (older than 7 days)
+    if let Err(e) = cleanup_old_logs(&data_dir, 7) {
+        tracing::warn!("Failed to clean up old logs: {}", e);
+    }
 
     // Try to initialize API client
     let api_client_result = api::RadioBrowserClient::new().await;
@@ -208,6 +213,25 @@ async fn main() -> Result<()> {
             }
         }
 
+        // Execute pending page change if flag is set
+        if let Some(direction) = app.pending_page_change {
+            app.pending_page_change = None;
+            tracing::info!("Executing pending page change: direction={}", direction);
+            if direction > 0 {
+                // Next page
+                if let Err(e) = app.next_page().await {
+                    tracing::error!("Failed to load next page: {}", e);
+                    app.show_error(format!("Failed to load page: {}", e));
+                }
+            } else {
+                // Previous page
+                if let Err(e) = app.prev_page().await {
+                    tracing::error!("Failed to load previous page: {}", e);
+                    app.show_error(format!("Failed to load page: {}", e));
+                }
+            }
+        }
+
         // Handle events
         tokio::select! {
             _ = tick_interval.tick() => {
@@ -246,6 +270,12 @@ async fn main() -> Result<()> {
 
 async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
     tracing::info!("handle_key_event called with key: {:?}, modifiers: {:?}", key, modifiers);
+    
+    // Debug: specifically log ] key
+    if matches!(key, KeyCode::Char(']')) {
+        tracing::info!("DEBUG: ] key detected in handle_key_event!");
+        app.add_log("] key detected!".to_string());
+    }
     
     // Handle Ctrl+C to quit immediately
     if modifiers.contains(KeyModifiers::CONTROL) && matches!(key, KeyCode::Char('c')) {
@@ -440,10 +470,7 @@ async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) 
         KeyCode::Char('[') => {
             // Load previous page from API
             if app.current_page > 1 {
-                if let Err(e) = app.prev_page().await {
-                    tracing::error!("Failed to load previous page: {}", e);
-                    app.show_error(format!("Failed to load page: {}", e));
-                }
+                app.pending_page_change = Some(-1);
             } else {
                 app.show_warning("Already on first page".to_string());
             }
@@ -451,12 +478,10 @@ async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) 
         KeyCode::Char(']') => {
             // Load next page from API
             tracing::info!("'] key pressed: current_page={}, is_last_page={}", app.current_page, app.is_last_page);
+            app.add_log(format!("] pressed: page={}, is_last={}", app.current_page, app.is_last_page));
             if !app.is_last_page {
-                tracing::info!("Calling next_page()");
-                if let Err(e) = app.next_page().await {
-                    tracing::error!("Failed to load next page: {}", e);
-                    app.show_error(format!("Failed to load page: {}", e));
-                }
+                tracing::info!("Setting pending_page_change to +1");
+                app.pending_page_change = Some(1);
             } else {
                 tracing::info!("Showing 'already on last page' warning");
                 app.show_warning("Already on last page".to_string());
