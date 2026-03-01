@@ -1,19 +1,25 @@
-# Web Radio TUI
+# LazyRadio
 
-A terminal-based web radio browser and player built with Rust, featuring a rich TUI interface powered by [ratatui](https://github.com/ratatui-org/ratatui).
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
+[![Rust 1.83+](https://img.shields.io/badge/rust-1.83%2B-orange.svg)](https://www.rust-lang.org)
+[![Platform: Linux | macOS | Windows](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey.svg)](https://github.com/osmo-systems/lazyradio)
+
+A lightning-fast terminal-based web radio player with advanced search capabilities, powered by the [Radio Browser](https://www.radio-browser.info/) community database.
+
+**Powered by Radio Browser** - LazyRadio is built on top of the free, open-source [Radio Browser API](https://www.radio-browser.info/), a community-driven database of 40,000+ radio stations from around the world. By using LazyRadio, you're supporting this amazing project through station votes and play tracking.
 
 ## Features
 
-- 🎵 **Browse & Play Web Radio Stations** from the [Radio Browser](https://www.radio-browser.info/) API
-- 🔍 **Multiple Browse Modes**: Popular stations, search by name, browse by country, genre, or language
-- ⭐ **Favorites**: Save your favorite stations locally
-- 📜 **History**: Track recently played stations
-- 🎛️ **Player Controls**: Play, pause, stop, reload, volume control
-- 📊 **Audio Visualizer**: Real-time audio visualization
-- 👍 **Voting System**: Vote for your favorite stations on Radio Browser
-- 💾 **Caching**: Smart caching to reduce API calls and speed up browsing
-- 📝 **Logging**: Comprehensive logging with tracing
-- 🖥️ **Cross-Platform**: Works on Linux, macOS, and Windows
+- 🎵 **Access 40,000+ Radio Stations** - Browse the entire Radio Browser community database
+- 🔍 **Advanced Search with Autocomplete** - Field-based query syntax with intelligent suggestions (name, country, language, codec, bitrate, and more)
+- ⚡ **Lightning Fast** - Built with Rust and optimized for performance with smart caching
+- ⭐ **Favorites** - Save and organize your favorite stations locally
+- 📜 **History** - Track recently played stations with automatic saving
+- 🎛️ **Full Player Controls** - Play, pause, stop, reload, volume control
+- 👍 **Support Radio Browser** - Vote for stations to improve the community database
+- 💾 **Smart Caching** - Reduce API load with intelligent result caching
+- 🖥️ **Cross-Platform** - Works seamlessly on Linux, macOS, and Windows
+- 🔐 **Privacy-Focused** - All data stored locally, no telemetry
 
 ## Screenshots
 
@@ -21,25 +27,19 @@ A terminal-based web radio browser and player built with Rust, featuring a rich 
 ┌Tabs────────────────────────────────────────────────────────────────┐
 │ Browse (1)  Favorites (2)  History (3)                             │
 └────────────────────────────────────────────────────────────────────┘
-┌Browse Mode─────────────────────────────────────────────────────────┐
-│ Popular (F1)  Search (/)  Country (F2)  Genre (F3)  Language (F4)  │
-└────────────────────────────────────────────────────────────────────┘
 ┌Stations (100 stations)─────────────────────────────────────────────┐
 │ ♥ ● Jazz FM - USA - MP3 - 128 kbps                                 │
 │   ● Classical Radio - UK - AAC - 192 kbps                           │
 │   ● Rock Station - Germany - MP3 - 256 kbps                         │
 └────────────────────────────────────────────────────────────────────┘
-┌Player──────────────────────────────┬Visualizer──────────────────────┐
-│ ▶ Playing                          │ ████                           │
-│                                    │ █████                          │
-│ Station: Jazz FM                   │ ████                           │
-│ Volume:  ████████████░░░░░░░░ 60%  │ ███                            │
-│                                    │ ████                           │
-│ Controls: Enter=Play Space=Pause/  │ █████                          │
-│          Resume S=Stop R=Reload   │ ████                           │
-└────────────────────────────────────┴────────────────────────────────┘
+┌Player──────────────────────────────────────────────────────────────┐
+│ ▶ Playing: Jazz FM                                                 │
+│ Volume:  ████████████░░░░░░░░ 60%                                  │
+│                                                                     │
+│ Controls: Enter=Play Space=Pause/Resume S=Stop R=Reload            │
+└────────────────────────────────────────────────────────────────────┘
 ┌Status──────────────────────────────────────────────────────────────┐
-│ Keys: ↑/↓=Navigate Tab=Switch F=Favorite V=Vote Q=Quit             │
+│ Keys: ↑/↓=Navigate Tab=Switch /=Search F=Favorite V=Vote Ctrl+C=Quit │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -73,14 +73,15 @@ No additional dependencies required. Audio is handled through WASAPI.
 
 ### Building from Source
 
-1. **Install Rust** (if not already installed):
+1. **Install Rust 1.83 or later** (if not already installed):
    ```bash
    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
    ```
 
 2. **Clone and build**:
    ```bash
-   cd web-radio
+   git clone https://github.com/osmo-systems/lazyradio.git
+   cd lazyradio
    cargo build --release
    ```
 
@@ -92,70 +93,138 @@ No additional dependencies required. Audio is handled through WASAPI.
 Or install globally:
 ```bash
 cargo install --path .
-web-radio
+lazyradio
 ```
 
 ## Usage
 
+### Quick Start
+
+1. Launch LazyRadio
+2. Press `/` to open the search popup
+3. Type a query like `name=jazz country=usa` or just `jazz`
+4. Use arrow keys to navigate results
+5. Press `Enter` to play a station
+6. Press `F` to add to favorites
+7. Press `V` to vote and support the station on Radio Browser
+
+### Advanced Search Guide
+
+LazyRadio supports powerful field-based queries with autocomplete. Press `/` to open the search popup, then type your query using the syntax below.
+
+#### Search Syntax
+
+You can search using simple text (e.g., `jazz`) or field-based queries (e.g., `name=jazz country=usa`). Field-based searches allow precise filtering.
+
+#### Available Search Fields
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| `name` | Station name | `name=BBC` |
+| `country` | Country name | `country=Germany` |
+| `countrycode` | ISO country code | `countrycode=US` |
+| `state` | State/region | `state=California` |
+| `language` | Language | `language=English` |
+| `tag` | Genre/category tag | `tag=jazz` |
+| `codec` | Audio codec | `codec=MP3` |
+| `bitrate_min` | Minimum bitrate (kbps) | `bitrate_min=128` |
+| `bitrate_max` | Maximum bitrate (kbps) | `bitrate_max=320` |
+| `order` | Sort by (votes, clickcount, bitrate, etc.) | `order=votes` |
+| `reverse` | Reverse sort order | `reverse=true` |
+| `hidebroken` | Hide offline stations | `hidebroken=true` |
+| `is_https` | Only HTTPS streams | `is_https=true` |
+
+#### Example Queries
+
+```
+# Simple text search (searches station name)
+jazz
+
+# Search by station name
+name=BBC Radio
+
+# High-quality jazz stations in the USA
+tag=jazz country=USA bitrate_min=192
+
+# Most popular stations
+order=votes reverse=true hidebroken=true
+
+# German classical music stations
+tag=classical country=Germany language=German
+
+# High-bitrate electronic music
+tag=electronic bitrate_min=256 order=bitrate reverse=true
+```
+
+#### Autocomplete Features
+
+- **Context-aware suggestions**: Autocomplete shows relevant fields and values as you type
+- **Field icons**: Visual indicators help identify field types:
+  - 🌍 Countries
+  - 🗣️ Languages  
+  - 🏷️ Tags/genres
+  - 🎵 Codecs
+  - 🔊 Bitrates
+  - 📊 Sort orders
+- **Arrow navigation**: Use ↑/↓ to select suggestions, Tab/Enter to accept
+- **Smart completion**: Accepts with spaces, quotes values with spaces automatically
+
+#### Default Query
+
+When you first open the Browse tab, LazyRadio uses this default query:
+```
+order=votes reverse=true hidebroken=true
+```
+
+This shows the most popular, working stations first.
+
 ### Keyboard Shortcuts
 
 #### Navigation
-- `↑/↓` or `j/k`: Navigate through lists
-- `PgUp/PgDn`: Page up/down
+- `↑/↓` or `j/k`: Navigate through station lists
+- `PgUp/PgDn` or `N/P`: Navigate pages (when results span multiple pages)
 - `Tab`: Next tab
 - `Shift+Tab`: Previous tab
 - `1/2/3`: Quick switch to Browse/Favorites/History tabs
 
-#### Browse Modes (in Browse tab)
-- `F1` or `1`: Popular stations
-- `F2` or `2`: Browse by country
-- `F3` or `3`: Browse by genre
-- `F4` or `4`: Browse by language
-- `/`: Search by name
+#### Search
+- `/`: Open search popup
+- `Esc`: Close search popup (or cancel current search)
+- `Enter`: Submit search query
+- `Tab`: Accept autocomplete suggestion
+- `↑/↓`: Navigate autocomplete suggestions
 
 #### Playback
 - `Enter`: Play selected station
-- `Space`: Pause/Resume
+- `Space`: Pause/Resume playback
 - `S`: Stop playback
-- `R`: Reload current station (reconnect)
-- `+/=`: Volume up
-- `-/_`: Volume down
+- `R`: Reload current station (reconnect to stream)
+- `+/=`: Volume up (+5%)
+- `-/_`: Volume down (-5%)
 
 #### Station Management
 - `F`: Toggle favorite for selected station
-- `V`: Vote for selected station (on Radio Browser API)
+- `V`: Vote for selected station on Radio Browser (helps improve the community database)
 
 #### General
-- `Esc`: Cancel search / Go back from browse list
-- `Q`: Quit application
-
-### Browse Modes
-
-#### Popular Stations
-Shows the most popular/voted stations from Radio Browser.
-
-#### Search by Name
-Press `/` to enter search mode, type your query, and press `Enter` to search.
-
-#### Browse by Country/Genre/Language
-1. Press `F2`, `F3`, or `F4` to enter browse mode
-2. Select from the list using arrow keys
-3. Press `Enter` to load stations
-4. Press `Esc` to go back to the list
+- `Ctrl+C`: Quit application
+- `Esc`: Close popups / Clear error messages
 
 ### Data Storage
 
 All user data is stored in platform-specific directories:
-- **Linux**: `~/.local/share/web-radio/`
-- **macOS**: `~/Library/Application Support/web-radio/`
-- **Windows**: `%APPDATA%\web-radio\`
+- **Linux**: `~/.local/share/lazyradio/`
+- **macOS**: `~/Library/Application Support/lazyradio/`
+- **Windows**: `%APPDATA%\lazyradio\`
 
 Files stored:
 - `favorites.toml`: Your favorite stations
-- `history.toml`: Recently played stations
+- `history.toml`: Recently played stations (last 50)
+- `search_history.toml`: Recent search queries (last 50)
+- `session.toml`: Session state (last volume, last played station)
 - `config.toml`: Application configuration
 - `cache/`: Cached station lists
-- `web-radio.log`: Application logs
+- `lazyradio.log`: Application logs
 
 ### Configuration
 
@@ -167,6 +236,9 @@ cache_duration_secs = 3600
 
 # Maximum number of history entries (default: 50)
 max_history_entries = 50
+
+# Maximum number of search history entries (default: 50)
+max_search_history_entries = 50
 
 # Default volume (0.0 to 1.0, default: 0.5)
 default_volume = 0.5
@@ -182,41 +254,66 @@ station_limit = 100
 ```
 src/
 ├── main.rs           # Entry point and event loop
-├── app.rs            # Application state management
+├── app.rs            # Application state management (3 tabs: Browse, Favorites, History)
 ├── config.rs         # Configuration management
 ├── api/              # Radio Browser API client
-│   ├── client.rs     # HTTP client with server discovery
-│   └── models.rs     # Data models for stations
-├── player/           # Audio playback
-│   └── audio.rs      # Rodio-based audio player
-├── storage/          # Data persistence
+│   ├── client.rs     # HTTP client with automatic server discovery
+│   └── models.rs     # Station data models
+├── player/           # Audio playback engine
+│   └── audio.rs      # Rodio-based streaming player
+├── storage/          # Data persistence layer
 │   ├── favorites.rs  # Favorites management
-│   ├── history.rs    # History tracking
-│   └── cache.rs      # Station list caching
-└── ui/               # Terminal UI
-    └── layout.rs     # Ratatui-based UI layout
+│   ├── history.rs    # Playback history tracking
+│   ├── cache.rs      # API response caching
+│   └── search_history.rs  # Search query history
+├── search/           # Advanced search system
+│   ├── parser.rs     # Query parser
+│   ├── autocomplete.rs  # Autocomplete engine with 13 field types
+│   └── mod.rs        # Search coordination
+└── ui/               # Terminal UI components
+    ├── layout.rs     # Main TUI layout with ratatui
+    └── search_popup.rs  # Interactive search popup with autocomplete
 ```
 
 ### Key Technologies
 
-- **[ratatui](https://github.com/ratatui-org/ratatui)**: Terminal UI framework
+- **[ratatui](https://github.com/ratatui-org/ratatui)**: Terminal UI framework for rich, interactive interfaces
 - **[crossterm](https://github.com/crossterm-rs/crossterm)**: Cross-platform terminal manipulation
-- **[rodio](https://github.com/RustAudio/rodio)**: Audio playback
-- **[reqwest](https://github.com/seanmonstar/reqwest)**: HTTP client for API calls
+- **[rodio](https://github.com/RustAudio/rodio)**: Audio playback with codec support
+- **[reqwest](https://github.com/seanmonstar/reqwest)**: Async HTTP client for API calls
 - **[tokio](https://github.com/tokio-rs/tokio)**: Async runtime
-- **[trust-dns-resolver](https://github.com/bluejekyll/trust-dns)**: DNS resolution for server discovery
-- **[tracing](https://github.com/tokio-rs/tracing)**: Structured logging
+- **[trust-dns-resolver](https://github.com/bluejekyll/trust-dns)**: DNS resolution for Radio Browser server discovery
+- **[tracing](https://github.com/tokio-rs/tracing)**: Structured logging and diagnostics
 
 ## Radio Browser API
 
-This application uses the free and open-source [Radio Browser API](https://www.radio-browser.info/). The API provides:
-- Access to thousands of web radio stations
-- Search and browse capabilities
-- Station metadata (name, country, genre, bitrate, codec, etc.)
-- Online status checking
-- Click tracking and voting system
+LazyRadio is built on the **[Radio Browser API](https://www.radio-browser.info/)**, a free, open-source, community-driven database of radio stations.
 
-The application automatically discovers available API servers via DNS and load-balances requests across them.
+### About Radio Browser
+
+Radio Browser provides:
+- **40,000+ radio stations** from around the world
+- **Community curation** - stations added and maintained by users
+- **Free API access** - no registration, no rate limits
+- **Multiple API servers** - distributed infrastructure for reliability
+- **Rich metadata** - country, language, genre, codec, bitrate, and more
+- **Voting system** - community votes help surface quality stations
+- **Click tracking** - helps station owners understand their audience
+
+### How LazyRadio Supports Radio Browser
+
+- **Automatic server discovery**: LazyRadio discovers available API servers via DNS and load-balances requests
+- **Vote integration**: Press `V` to vote for stations you love (increases their visibility)
+- **Click tracking**: Every play is reported to help station analytics
+- **Respectful API usage**: Smart caching reduces unnecessary API calls
+
+### Contributing to Radio Browser
+
+You can help improve the Radio Browser database:
+- **Add stations**: Submit new stations at [radio-browser.info](https://www.radio-browser.info/)
+- **Vote for quality**: Use LazyRadio's vote feature (`V` key) to highlight great stations
+- **Report issues**: Flag broken or incorrect station data
+- **Donate**: Support Radio Browser's infrastructure costs
 
 ## Troubleshooting
 
@@ -230,17 +327,17 @@ The application automatically discovers available API servers via DNS and load-b
 **Crackling or stuttering:**
 - Check your network connection stability
 - Try a different station (some streams may have issues)
-- Use the reload (R) command to reconnect
+- Use the reload (`R`) command to reconnect
 
 ### Station Playback Issues
 
 **"Failed to play station" error:**
 - The station stream URL might be offline or changed
 - Try another station
-- Check logs in `~/.local/share/web-radio/web-radio.log`
+- Check logs in `~/.local/share/lazyradio/lazyradio.log`
 
 **Station loads but no audio:**
-- The codec might not be supported (though rodio supports most common formats)
+- The codec might not be supported (though rodio supports most common formats: MP3, AAC, OGG, FLAC)
 - Try pressing `R` to reload the station
 - Check if other stations work
 
@@ -254,6 +351,18 @@ The application automatically discovers available API servers via DNS and load-b
 **Slow loading:**
 - Initial load fetches station lists which can take a few seconds
 - Subsequent browsing uses cached data (configurable via `cache_duration_secs`)
+- Try a more specific search query to reduce result size
+
+### Search Issues
+
+**Autocomplete not showing suggestions:**
+- Keep typing - suggestions appear as you build your query
+- Use field syntax (e.g., `name=`, `country=`) to trigger field-specific suggestions
+
+**No results for query:**
+- Check for typos in field names or values
+- Try a broader search (e.g., remove filters)
+- Use `hidebroken=false` to include offline stations in results
 
 ### Build Issues
 
@@ -261,21 +370,21 @@ The application automatically discovers available API servers via DNS and load-b
 - Install ALSA development headers (see Installation Prerequisites)
 
 **Other compilation errors:**
-- Ensure you have the latest Rust: `rustup update`
+- Ensure you have Rust 1.83 or later: `rustup update`
 - Try cleaning and rebuilding: `cargo clean && cargo build`
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
-### Development
+### Quick Development Setup
 
 Run in development mode:
 ```bash
 cargo run
 ```
 
-Run with logging to terminal (for debugging):
+Run with debug logging:
 ```bash
 RUST_LOG=debug cargo run
 ```
@@ -287,23 +396,26 @@ cargo test
 
 ## License
 
-This project is open source. See LICENSE file for details.
+Licensed under either of:
+
+- **MIT License** ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+- **Apache License 2.0** ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
 
 ## Acknowledgments
 
-- [Radio Browser](https://www.radio-browser.info/) for providing the free radio station API
-- [ratatui](https://github.com/ratatui-org/ratatui) for the excellent TUI framework
-- [rodio](https://github.com/RustAudio/rodio) for cross-platform audio playback
-- All the contributors to the Rust crates used in this project
+- **[Radio Browser](https://www.radio-browser.info/)** - For providing the free, community-driven radio station database that powers LazyRadio
+- **[ratatui](https://github.com/ratatui-org/ratatui)** - For the excellent terminal UI framework
+- **[rodio](https://github.com/RustAudio/rodio)** - For cross-platform audio playback
+- **The Rust Community** - For all the amazing crates and tools that make projects like this possible
 
-## Future Enhancements
+Built with ❤️ by [Mathieu Antoine](https://github.com/osmo-systems) and contributors.
 
-- [ ] Playlist support (queue multiple stations)
-- [ ] Station recording
-- [ ] Custom station URLs
-- [ ] Themes/color schemes
-- [ ] Mouse support
-- [ ] Station metadata display (currently playing song, etc.)
-- [ ] Equalizer
-- [ ] Network radio protocols (e.g., Shoutcast directory)
-- [ ] Last.fm scrobbling
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and release notes.
