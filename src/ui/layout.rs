@@ -13,14 +13,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
+            Constraint::Length(8),  // Player + Status log section (at top)
             Constraint::Min(10),    // Main content (includes tabs in title)
-            Constraint::Length(8),  // Player + Status log section
-            Constraint::Length(3),  // Shortcuts bar
+            Constraint::Length(1),  // Shortcuts bar (no border)
         ])
         .split(f.area());
 
-    draw_main_content(f, app, chunks[0]);
-    draw_player_and_log(f, app, chunks[1]);
+    draw_player_and_log(f, app, chunks[0]);
+    draw_main_content(f, app, chunks[1]);
     draw_status_bar(f, app, chunks[2]);
     
     // Draw popups on top of everything
@@ -282,35 +282,82 @@ fn draw_player(f: &mut Frame, app: &App, area: Rect) {
 }
 
 fn draw_status_bar(f: &mut Frame, _app: &App, area: Rect) {
-    // Main shortcuts - compact single line
-    let line = Line::from(vec![
-        Span::styled("↑↓", Style::default().fg(Color::Yellow)),
-        Span::raw(":Nav  "),
-        Span::styled("Enter", Style::default().fg(Color::Yellow)),
-        Span::raw(":Play  "),
-        Span::styled("Space", Style::default().fg(Color::Yellow)),
-        Span::raw(":Pause  "),
-        Span::styled("S", Style::default().fg(Color::Yellow)),
-        Span::raw(":Stop  "),
-        Span::styled("+-", Style::default().fg(Color::Yellow)),
-        Span::raw(":Vol  "),
-        Span::styled("F", Style::default().fg(Color::Yellow)),
-        Span::raw(":Fav  "),
-        Span::styled("/", Style::default().fg(Color::Yellow)),
-        Span::raw(":Search  "),
-        Span::styled("[]", Style::default().fg(Color::Yellow)),
-        Span::raw(":Switch tab  "),
-        Span::styled("?", Style::default().fg(Color::Yellow)),
-        Span::raw(":Help  "),
-        Span::styled("Ctrl+C", Style::default().fg(Color::Yellow)),
-        Span::raw(":Quit"),
+    // Add horizontal margin to align with bordered widgets
+    let margin_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(1),  // Left margin
+            Constraint::Min(0),     // Content
+            Constraint::Length(1),  // Right margin
+        ])
+        .split(area);
+    
+    let content_area = margin_chunks[1];
+    
+    // Split content area into left (shortcuts) and right (version)
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),      // Shortcuts (takes remaining space)
+            Constraint::Length(20),  // Version info
+        ])
+        .split(content_area);
+    
+    // Main shortcuts - compact single line with light blue
+    let text_style = Style::default().fg(Color::Cyan);
+    let key_style = Style::default().fg(Color::LightCyan);
+    
+    let shortcuts_line = Line::from(vec![
+        Span::styled("↑↓", key_style),
+        Span::styled(":Nav", text_style),
+        Span::styled(" | ", text_style),
+        Span::styled("Enter", key_style),
+        Span::styled(":Play", text_style),
+        Span::styled(" | ", text_style),
+        Span::styled("Space", key_style),
+        Span::styled(":Pause", text_style),
+        Span::styled(" | ", text_style),
+        Span::styled("S", key_style),
+        Span::styled(":Stop", text_style),
+        Span::styled(" | ", text_style),
+        Span::styled("+-", key_style),
+        Span::styled(":Vol", text_style),
+        Span::styled(" | ", text_style),
+        Span::styled("F", key_style),
+        Span::styled(":Fav", text_style),
+        Span::styled(" | ", text_style),
+        Span::styled("/", key_style),
+        Span::styled(":Search", text_style),
+        Span::styled(" | ", text_style),
+        Span::styled("[]", key_style),
+        Span::styled(":Page", text_style),
+        Span::styled(" | ", text_style),
+        Span::styled("Tab", key_style),
+        Span::styled(":Switch", text_style),
+        Span::styled(" | ", text_style),
+        Span::styled("?", key_style),
+        Span::styled(":Help", text_style),
+        Span::styled(" | ", text_style),
+        Span::styled("Ctrl+C", key_style),
+        Span::styled(":Quit", text_style),
     ]);
 
-    let paragraph = Paragraph::new(line)
-        .block(Block::default().borders(Borders::ALL).title("Shortcuts"))
+    let shortcuts = Paragraph::new(shortcuts_line)
         .alignment(Alignment::Left);
 
-    f.render_widget(paragraph, area);
+    f.render_widget(shortcuts, chunks[0]);
+    
+    // Version info on the right
+    let version = env!("CARGO_PKG_VERSION");
+    let version_line = Line::from(vec![
+        Span::styled("lazyradio ", text_style),
+        Span::styled(version, key_style),
+    ]);
+    
+    let version_widget = Paragraph::new(version_line)
+        .alignment(Alignment::Right);
+    
+    f.render_widget(version_widget, chunks[1]);
 }
 
 fn draw_error_popup(f: &mut Frame, app: &App) {
