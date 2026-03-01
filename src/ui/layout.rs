@@ -210,7 +210,8 @@ fn draw_status_log(f: &mut Frame, app: &App, area: Rect) {
 fn get_player_icon(state: PlayerState, frame: usize) -> &'static str {
     match state {
         PlayerState::Playing => {
-            const PLAYING_ICONS: &[&str] = &["▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"];
+            // Spinning vinyl record animation
+            const PLAYING_ICONS: &[&str] = &["◐", "◓", "◑", "◒"];
             PLAYING_ICONS[frame % PLAYING_ICONS.len()]
         }
         PlayerState::Loading => {
@@ -229,54 +230,78 @@ fn draw_player(f: &mut Frame, app: &App, area: Rect) {
     // Get animated icon based on state
     let icon = get_player_icon(info.state, app.animation_frame);
 
-    let state_text = match info.state {
-        PlayerState::Playing => format!("{} Playing", icon),
-        PlayerState::Paused => format!("{} Paused", icon),
-        PlayerState::Stopped => format!("{} Stopped", icon),
-        PlayerState::Loading => format!("{} Loading...", icon),
-        PlayerState::Error => format!("{} Error", icon),
+    let state_name = match info.state {
+        PlayerState::Playing => "Playing",
+        PlayerState::Paused => "Paused",
+        PlayerState::Stopped => "Stopped",
+        PlayerState::Loading => "Loading...",
+        PlayerState::Error => "Error",
     };
 
     let state_color = match info.state {
         PlayerState::Playing => Color::Green,
         PlayerState::Paused => Color::Yellow,
         PlayerState::Stopped => Color::Gray,
-        PlayerState::Loading => Color::Blue,
+        PlayerState::Loading => Color::Cyan,  // Changed from Blue for better visibility
         PlayerState::Error => Color::Red,
     };
 
+    // Shorter volume bar (10 chars instead of 20)
     let volume_bar = {
-        let filled = (info.volume * 20.0) as usize;
-        let empty = 20 - filled;
+        let filled = (info.volume * 10.0) as usize;
+        let empty = 10 - filled;
         format!("{}{}",  "█".repeat(filled), "░".repeat(empty))
     };
 
     // Show the currently playing station name prominently
+    // Truncate station name if too long (calculate based on widget width)
+    let max_station_length = area.width.saturating_sub(4) as usize; // Account for borders
     let station_display = if !info.station_name.is_empty() {
-        info.station_name.clone()
+        let name = &info.station_name;
+        if name.len() > max_station_length {
+            format!("{}...", &name[..max_station_length.saturating_sub(3)])
+        } else {
+            name.clone()
+        }
     } else {
         "No station selected".to_string()
     };
 
+    // Calculate spacing for state and volume to be on the same line
+    // We want: "[Icon] State" on left, "Vol: [bar] XX%" on right
+    let volume_text = format!("Vol: {} {}%", volume_bar, (info.volume * 100.0) as u8);
+    let state_text_len = icon.len() + 1 + state_name.len(); // icon + space + state name
+    let volume_text_len = volume_text.len();
+    let available_width = area.width.saturating_sub(4) as usize; // Account for borders and padding
+    let spacing = if available_width > state_text_len + volume_text_len {
+        available_width.saturating_sub(state_text_len + volume_text_len)
+    } else {
+        2 // Minimum spacing
+    };
+
     let lines = vec![
+        Line::from(""),  // Empty line for spacing
         Line::from(vec![
-            Span::styled(state_text, Style::default().fg(state_color).add_modifier(Modifier::BOLD)),
+            Span::styled(&station_display, Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD)),
         ]),
-        Line::from(""),
+        Line::from(""),  // Empty line for spacing
         Line::from(vec![
-            Span::styled("♫ ", Style::default().fg(Color::Magenta)),
-            Span::styled(&station_display, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+            Span::styled(icon, Style::default().fg(state_color)),
+            Span::raw(" "),
+            Span::styled(state_name, Style::default().fg(state_color).add_modifier(Modifier::BOLD)),
+            Span::raw(" ".repeat(spacing)),
+            Span::styled("Vol: ", Style::default().fg(Color::Cyan)),
+            Span::styled(&volume_bar, Style::default().fg(Color::Cyan)),
+            Span::raw(format!(" {}%", (info.volume * 100.0) as u8)),
         ]),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("Volume:  ", Style::default().fg(Color::Cyan)),
-            Span::raw(format!("{} {}%", volume_bar, (info.volume * 100.0) as u8)),
-        ]),
+        Line::from(""),  // Empty line for spacing
     ];
 
     let paragraph = Paragraph::new(lines)
-        .block(Block::default().borders(Borders::ALL).title("Player"))
-        .alignment(Alignment::Left);
+        .block(Block::default().borders(Borders::ALL).title("Now Playing"))
+        .alignment(Alignment::Center);
 
     f.render_widget(paragraph, area);
 }
