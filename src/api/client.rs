@@ -236,9 +236,13 @@ impl RadioBrowserClient {
             params.push(format!("name={}", urlencoding::encode(name)));
         }
         if let Some(countries) = &query.country {
-            // Multiple countries = OR logic, join with comma
-            let country_str = countries.join(",");
-            params.push(format!("country={}", urlencoding::encode(&country_str)));
+            // Multiple countries = OR logic
+            // Encode each country separately, then join with comma (comma must NOT be encoded)
+            let country_str = countries.iter()
+                .map(|c| urlencoding::encode(c).to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            params.push(format!("country={}", country_str));
         }
         if let Some(countrycode) = &query.countrycode {
             params.push(format!("countrycode={}", urlencoding::encode(countrycode)));
@@ -247,14 +251,22 @@ impl RadioBrowserClient {
             params.push(format!("state={}", urlencoding::encode(state)));
         }
         if let Some(languages) = &query.language {
-            // Multiple languages = OR logic, join with comma
-            let language_str = languages.join(",");
-            params.push(format!("language={}", urlencoding::encode(&language_str)));
+            // Multiple languages = OR logic
+            // Encode each language separately, then join with comma (comma must NOT be encoded)
+            let language_str = languages.iter()
+                .map(|l| urlencoding::encode(l).to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            params.push(format!("language={}", language_str));
         }
         if let Some(tags) = &query.tags {
             // tagList = AND logic (all tags must match)
-            let tag_str = tags.join(",");
-            params.push(format!("tagList={}", urlencoding::encode(&tag_str)));
+            // Encode each tag separately, then join with comma (comma must NOT be encoded)
+            let tag_str = tags.iter()
+                .map(|t| urlencoding::encode(t).to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            params.push(format!("tagList={}", tag_str));
         }
         if let Some(codec) = &query.codec {
             params.push(format!("codec={}", urlencoding::encode(codec)));
