@@ -168,11 +168,18 @@ impl App {
     }
     
     pub fn show_error(&mut self, message: String) {
+        tracing::info!("show_error called with: {}", message);
         self.error_popup = Some(message);
     }
     
     pub fn close_error_popup(&mut self) {
+        tracing::info!("close_error_popup called, was: {:?}", self.error_popup);
         self.error_popup = None;
+        // Send command to clear the error in the player
+        if let Err(e) = self.player_cmd_tx.send(PlayerCommand::ClearError) {
+            tracing::warn!("Failed to send ClearError command: {}", e);
+        }
+        tracing::info!("close_error_popup done, error cleared in player");
     }
 
     // Search popup methods

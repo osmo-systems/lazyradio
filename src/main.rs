@@ -8,7 +8,7 @@ mod ui;
 
 use anyhow::Result;
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -80,7 +80,8 @@ async fn main() -> Result<()> {
                 
                 if event::poll(Duration::from_millis(100))? {
                     if let Event::Key(key) = event::read()? {
-                        if matches!(key.code, KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') | KeyCode::Char('Q')) {
+                        // Only handle key press events, not release
+                        if key.kind == KeyEventKind::Press && matches!(key.code, KeyCode::Esc | KeyCode::Enter | KeyCode::Char('q') | KeyCode::Char('Q')) {
                             break;
                         }
                     }
@@ -148,6 +149,7 @@ async fn main() -> Result<()> {
                 PlayerCommand::Stop => "Stop".to_string(),
                 PlayerCommand::SetVolume(v) => format!("SetVolume({})", v),
                 PlayerCommand::Reload => "Reload".to_string(),
+                PlayerCommand::ClearError => "ClearError".to_string(),
             });
             
             match cmd {
@@ -161,6 +163,9 @@ async fn main() -> Result<()> {
                 PlayerCommand::SetVolume(vol) => audio_player.set_volume(vol),
                 PlayerCommand::Reload => {
                     audio_player.reload();
+                }
+                PlayerCommand::ClearError => {
+                    audio_player.clear_error();
                 }
             }
         }
@@ -211,7 +216,10 @@ async fn main() -> Result<()> {
             _ = async {
                 if event::poll(Duration::from_millis(50)).unwrap() {
                     if let Ok(Event::Key(key)) = event::read() {
-                        handle_key_event(&mut app, key.code, key.modifiers).await;
+                        // Only handle key press events, not release
+                        if key.kind == KeyEventKind::Press {
+                            handle_key_event(&mut app, key.code, key.modifiers).await;
+                        }
                     }
                 }
             } => {}
@@ -237,6 +245,8 @@ async fn main() -> Result<()> {
 }
 
 async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
+    tracing::info!("handle_key_event called with key: {:?}, modifiers: {:?}", key, modifiers);
+    
     // Handle Ctrl+C to quit immediately
     if modifiers.contains(KeyModifiers::CONTROL) && matches!(key, KeyCode::Char('c')) {
         app.quit();
@@ -256,11 +266,15 @@ async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) 
     
     // Handle error popup (takes priority after help)
     if app.error_popup.is_some() {
+        tracing::info!("Error popup is open, key pressed: {:?}", key);
         match key {
             KeyCode::Esc | KeyCode::Enter => {
+                tracing::info!("Closing error popup");
                 app.close_error_popup();
             }
-            _ => {}
+            _ => {
+                tracing::info!("Ignoring key: {:?}", key);
+            }
         }
         return;
     }

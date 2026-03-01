@@ -33,6 +33,7 @@ pub enum PlayerCommand {
     Stop,
     SetVolume(f32),
     Reload,
+    ClearError,
 }
 
 pub struct AudioPlayer {
@@ -75,6 +76,12 @@ impl AudioPlayer {
 
     pub fn get_info(&self) -> PlayerInfo {
         self.info.lock().unwrap().clone()
+    }
+
+    pub fn clear_error(&mut self) {
+        let mut info = self.info.lock().unwrap();
+        info.error_message = None;
+        tracing::info!("Player error cleared");
     }
 
     pub fn get_command_sender(&self) -> mpsc::UnboundedSender<PlayerCommand> {
