@@ -67,6 +67,7 @@ pub struct App {
     
     // Visualizer
     pub visualizer_data: Vec<f32>,
+    visualizer_time: f32,
 }
 
 impl App {
@@ -122,6 +123,7 @@ impl App {
             browse_list_mode: false,
             
             visualizer_data: vec![0.0; 50],
+            visualizer_time: 0.0,
         };
 
         Ok(app)
@@ -621,20 +623,65 @@ impl App {
     }
 
     pub fn update_visualizer(&mut self) {
-        // Simple random visualizer for now
-        // In a real implementation, this would analyze audio data
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        
         if self.player_info.state == crate::player::PlayerState::Playing {
+            // Heartbeat/pulse pattern based on time
+            // Creates a medical monitor style pulse
+            self.visualizer_time += 0.15; // Speed of the heartbeat
+            
+            // Create a heartbeat pattern: double pulse (lub-dub)
+            let beat_cycle = self.visualizer_time % 2.0; // 2-second cycle
+            
+            let amplitude = if beat_cycle < 0.15 {
+                // First pulse (lub) - quick rise
+                (beat_cycle / 0.15).sin()
+            } else if beat_cycle < 0.3 {
+                // Fall from first pulse
+                ((0.3 - beat_cycle) / 0.15).sin() * 0.5
+            } else if beat_cycle < 0.5 {
+                // Second pulse (dub) - slightly smaller
+                ((beat_cycle - 0.3) / 0.2).sin() * 0.7
+            } else if beat_cycle < 0.7 {
+                // Fall from second pulse
+                ((0.7 - beat_cycle) / 0.2).sin() * 0.35
+            } else {
+                // Rest period between beats
+                let rest = (beat_cycle - 0.7) / 1.3;
+                (rest * std::f32::consts::PI).sin() * 0.1
+            };
+            
+            // Create wave pattern that spreads from center
+            let center = self.visualizer_data.len() / 2;
             for i in 0..self.visualizer_data.len() {
-                let target = rng.gen_range(0.0..1.0);
-                self.visualizer_data[i] = self.visualizer_data[i] * 0.7 + target * 0.3;
+                let distance_from_center = ((i as f32 - center as f32).abs() / center as f32);
+                
+                // Phase shift based on distance from center (wave effect)
+                let phase = distance_from_center * 2.0;
+                let wave_time = self.visualizer_time - phase;
+                let wave_cycle = wave_time % 2.0;
+                
+                let bar_amplitude = if wave_cycle < 0.15 {
+                    (wave_cycle / 0.15).sin()
+                } else if wave_cycle < 0.3 {
+                    ((0.3 - wave_cycle) / 0.15).sin() * 0.5
+                } else if wave_cycle < 0.5 {
+                    ((wave_cycle - 0.3) / 0.2).sin() * 0.7
+                } else if wave_cycle < 0.7 {
+                    ((0.7 - wave_cycle) / 0.2).sin() * 0.35
+                } else {
+                    let rest = (wave_cycle - 0.7) / 1.3;
+                    (rest * std::f32::consts::PI).sin() * 0.1
+                };
+                
+                // Smooth transition
+                let target = bar_amplitude * (1.0 - distance_from_center * 0.3);
+                self.visualizer_data[i] = self.visualizer_data[i] * 0.6 + target * 0.4;
             }
         } else {
+            // Fade out when not playing
             for i in 0..self.visualizer_data.len() {
-                self.visualizer_data[i] *= 0.9;
+                self.visualizer_data[i] *= 0.85;
             }
+            self.visualizer_time = 0.0;
         }
     }
 }
