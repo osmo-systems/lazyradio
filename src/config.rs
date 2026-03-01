@@ -70,7 +70,7 @@ impl Config {
 pub fn get_data_dir() -> Result<PathBuf> {
     let data_dir = dirs::data_dir()
         .context("Failed to get data directory")?
-        .join("web-radio");
+        .join("lazyradio");
 
     if !data_dir.exists() {
         fs::create_dir_all(&data_dir)

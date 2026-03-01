@@ -10,7 +10,7 @@ use trust_dns_resolver::TokioAsyncResolver;
 use super::models::{ClickResponse, Country, Language, Station, Tag, VoteResponse};
 
 const API_DNS_NAME: &str = "all.api.radio-browser.info";
-const USER_AGENT: &str = "web-radio-tui/0.1.0";
+const USER_AGENT: &str = "lazyradio/0.1.0";
 
 #[derive(Clone)]
 pub struct RadioBrowserClient {

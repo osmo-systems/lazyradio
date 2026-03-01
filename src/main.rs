@@ -28,7 +28,7 @@ use search::{get_suggestions, parse_query};
 async fn main() -> Result<()> {
     // Initialize logging
     let data_dir = get_data_dir()?;
-    let log_file = tracing_appender::rolling::daily(&data_dir, "web-radio.log");
+    let log_file = tracing_appender::rolling::daily(&data_dir, "lazyradio.log");
     tracing_subscriber::fmt()
         .with_writer(log_file)
         .with_ansi(false)
