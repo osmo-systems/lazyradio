@@ -181,8 +181,9 @@ This shows the most popular, working stations first.
 ### Keyboard Shortcuts
 
 #### Navigation
-- `↑/↓` or `j/k`: Navigate through station lists
-- `PgUp/PgDn` or `N/P`: Navigate pages (when results span multiple pages)
+- `↑/↓`: Navigate through station lists
+- `PgUp/PgDn`: Page up/down through current list, or navigate to previous/next page when viewing paginated search results
+- `Home/End`: Jump to first/last station in list
 - `Tab`: Next tab
 - `Shift+Tab`: Previous tab
 - `1/2/3`: Quick switch to Browse/Favorites/History tabs
