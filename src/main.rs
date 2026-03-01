@@ -445,7 +445,7 @@ async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) 
                     app.show_error(format!("Failed to load page: {}", e));
                 }
             } else {
-                app.show_error("Already on first page".to_string());
+                app.show_warning("Already on first page".to_string());
             }
         }
         KeyCode::Char(']') => {
@@ -456,7 +456,7 @@ async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) 
                     app.show_error(format!("Failed to load page: {}", e));
                 }
             } else {
-                app.show_error("Already on last page".to_string());
+                app.show_warning("Already on last page".to_string());
             }
         }
         _ => {}

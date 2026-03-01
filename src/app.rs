@@ -68,6 +68,9 @@ pub struct App {
     // Error popup
     pub error_popup: Option<String>,
     
+    // Warning popup
+    pub warning_popup: Option<String>,
+    
     // Help popup
     pub help_popup: bool,
     
@@ -153,6 +156,7 @@ impl App {
             status_message: None,
             
             error_popup: None,
+            warning_popup: None,
             help_popup: false,
             
             countries: Vec::new(),
@@ -177,9 +181,15 @@ impl App {
         self.error_popup = Some(message);
     }
     
+    pub fn show_warning(&mut self, message: String) {
+        tracing::info!("show_warning called with: {}", message);
+        self.warning_popup = Some(message);
+    }
+    
     pub fn close_error_popup(&mut self) {
         tracing::info!("close_error_popup called, was: {:?}", self.error_popup);
         self.error_popup = None;
+        self.warning_popup = None;
         // Send command to clear the error in the player
         if let Err(e) = self.player_cmd_tx.send(PlayerCommand::ClearError) {
             tracing::warn!("Failed to send ClearError command: {}", e);

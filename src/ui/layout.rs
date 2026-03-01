@@ -37,6 +37,11 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     if app.error_popup.is_some() {
         draw_error_popup(f, app);
     }
+    
+    // Draw warning popup on top of everything if present
+    if app.warning_popup.is_some() {
+        draw_warning_popup(f, app);
+    }
 }
 
 fn draw_main_content(f: &mut Frame, app: &mut App, area: Rect) {
@@ -344,6 +349,50 @@ fn draw_error_popup(f: &mut Frame, app: &App) {
                     .border_style(Style::default().fg(Color::Red))
                     .title(" Error ")
                     .title_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD))
+            )
+            .wrap(Wrap { trim: true })
+            .alignment(Alignment::Left);
+        
+        f.render_widget(paragraph, popup_area);
+    }
+}
+
+fn draw_warning_popup(f: &mut Frame, app: &App) {
+    if let Some(ref warning_msg) = app.warning_popup {
+        // Calculate popup area (centered, 60% width, auto height)
+        let area = f.area();
+        let popup_width = (area.width as f32 * 0.6).min(80.0) as u16;
+        let popup_height = 10u16; // Fixed height for warning popup
+        
+        let popup_x = (area.width.saturating_sub(popup_width)) / 2;
+        let popup_y = (area.height.saturating_sub(popup_height)) / 2;
+        
+        let popup_area = Rect {
+            x: popup_x,
+            y: popup_y,
+            width: popup_width,
+            height: popup_height,
+        };
+        
+        // Clear the background
+        f.render_widget(Clear, popup_area);
+        
+        // Create the warning message with wrapping
+        let warning_text = vec![
+            Line::from(Span::styled("Warning", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))),
+            Line::from(""),
+            Line::from(Span::raw(warning_msg)),
+            Line::from(""),
+            Line::from(Span::styled("Press Esc/Enter to close", Style::default().fg(Color::Gray))),
+        ];
+        
+        let paragraph = Paragraph::new(warning_text)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Yellow))
+                    .title(" Warning ")
+                    .title_style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
             )
             .wrap(Wrap { trim: true })
             .alignment(Alignment::Left);
