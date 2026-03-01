@@ -84,7 +84,10 @@ impl AudioPlayer {
     pub fn play(&mut self, station_name: String, url: String) {
         info!("Starting playback: {} - {}", station_name, url);
 
-        // Update state to loading
+        // Stop current playback first
+        self.stop();
+
+        // Now update state to loading and set station info
         {
             let mut info = self.info.lock().unwrap();
             info.state = PlayerState::Loading;
@@ -92,9 +95,6 @@ impl AudioPlayer {
             info.station_url = url.clone();
             info.error_message = None;
         }
-
-        // Stop current playback
-        self.stop();
 
         // Store current station info
         self.current_url = Some(url.clone());
