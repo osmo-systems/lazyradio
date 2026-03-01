@@ -205,9 +205,11 @@ impl SearchPopup {
         let error_height = if self.parse_error.is_some() { 2 } else { 0 };
         let popup_height = base_height + autocomplete_height + error_height;
 
-        // Center popup both horizontally and vertically
+        // Center popup based on MAXIMUM possible height to keep position stable
+        // Maximum height = base + max autocomplete + max error
+        let max_popup_height = base_height + (max_autocomplete_items as u16 + 2) + 2;
         let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-        let popup_y = (area.height.saturating_sub(popup_height.min(area.height))) / 2;
+        let popup_y = (area.height.saturating_sub(max_popup_height.min(area.height))) / 2;
         
         let popup_area = Rect {
             x: popup_x,
