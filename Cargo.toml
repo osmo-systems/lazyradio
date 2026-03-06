@@ -2,7 +2,7 @@
 name = "lazyradio"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.83"
+rust-version = "1.93"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Antoine"]
 description = "A lightning-fast terminal-based web radio player with advanced search, powered by Radio Browser"

@@ -6,7 +6,7 @@ use tokio::sync::mpsc;
 use crate::api::{RadioBrowserClient, Station};
 use crate::config::Config;
 use crate::player::{PlayerCommand, PlayerInfo};
-use crate::search::{AutocompleteData, SearchQuery, is_default_query, format_query};
+use crate::search::{AutocompleteData, SearchQuery, format_query, is_default_query};
 use crate::storage::{CacheManager, FavoritesManager, HistoryManager, SearchHistoryManager};
 use crate::ui::SearchPopup;
 

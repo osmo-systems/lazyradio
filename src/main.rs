@@ -13,16 +13,15 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
-use std::io;
-use std::time::Duration;
+use std::{io, time::Duration};
 use tokio::time::interval;
 use tracing::info;
 use tracing_subscriber;
 
-use app::App;
-use config::{cleanup_old_logs, get_data_dir};
-use player::{AudioPlayer, PlayerCommand};
-use search::{get_suggestions, parse_query};
+use crate::app::App;
+use crate::config::{cleanup_old_logs, get_data_dir};
+use crate::player::{AudioPlayer, PlayerCommand};
+use crate::search::{get_suggestions, parse_query};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -81,7 +80,7 @@ async fn main() -> Result<()> {
             
             // Show error screen until user closes it
             loop {
-                terminal.draw(|f| ui::draw(f, &mut app))?;
+                terminal.draw(|f| crate::ui::draw(f, &mut app))?;
                 
                 if event::poll(Duration::from_millis(100))? {
                     if let Event::Key(key) = event::read()? {
@@ -201,7 +200,7 @@ async fn main() -> Result<()> {
         app.animation_frame = (app.animation_frame + 1) % 8;
 
         // Draw UI
-        terminal.draw(|f| ui::draw(f, &mut app))?;
+        terminal.draw(|f| crate::ui::draw(f, &mut app))?;
 
         // Execute pending search if flag is set
         if app.pending_search {
@@ -427,11 +426,11 @@ async fn handle_key_event(app: &mut App, key: KeyCode, modifiers: KeyModifiers) 
             }
         }
         KeyCode::Char(' ') => {
-            if app.player_info.state == player::PlayerState::Playing {
+            if app.player_info.state == crate::player::PlayerState::Playing {
                 let _ = app.pause();
-            } else if app.player_info.state == player::PlayerState::Paused {
+            } else if app.player_info.state == crate::player::PlayerState::Paused {
                 let _ = app.resume();
-            } else if app.player_info.state == player::PlayerState::Stopped && !app.player_info.station_url.is_empty() {
+            } else if app.player_info.state == crate::player::PlayerState::Stopped && !app.player_info.station_url.is_empty() {
                 // If stopped but there's a restored station, play it
                 let _ = app.play_restored();
             } else {

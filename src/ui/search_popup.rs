@@ -7,7 +7,7 @@ use ratatui::{
 };
 use std::time::Instant;
 
-use crate::search::{parse_query, ParseError, detect_context, AutocompleteContext};
+use crate::search::{detect_context, parse_query, AutocompleteContext, ParseError};
 
 pub struct SearchPopup {
     pub input: String,
@@ -69,7 +69,8 @@ impl SearchPopup {
 
     pub fn autocomplete_next(&mut self) {
         if !self.autocomplete_items.is_empty() {
-            self.autocomplete_selected = (self.autocomplete_selected + 1) % self.autocomplete_items.len();
+            self.autocomplete_selected =
+                (self.autocomplete_selected + 1) % self.autocomplete_items.len();
             self.update_scroll_offset();
         }
     }
@@ -86,42 +87,45 @@ impl SearchPopup {
     }
 
     pub fn accept_autocomplete(&mut self) -> Option<String> {
-        if !self.autocomplete_items.is_empty() && self.autocomplete_selected < self.autocomplete_items.len() {
+        if !self.autocomplete_items.is_empty()
+            && self.autocomplete_selected < self.autocomplete_items.len()
+        {
             let suggestion = self.autocomplete_items[self.autocomplete_selected].clone();
-            
+
             // Find where to insert the suggestion
             let before_cursor = &self.input[..self.cursor_position];
-            
+
             // Find the start of the current token
             let token_start = before_cursor
                 .rfind(|c: char| c == ' ' || c == '=' || c == ',')
                 .map(|i| i + 1)
                 .unwrap_or(0);
-            
+
             // Detect context to see if we're completing a field name
             let context = detect_context(&self.input, self.cursor_position);
             let is_field_name = matches!(context, AutocompleteContext::FieldName);
-            
+
             // Wrap in quotes if the suggestion contains spaces
             let mut suggestion_to_insert = if suggestion.contains(' ') {
                 format!("\"{}\"", suggestion)
             } else {
                 suggestion.clone()
             };
-            
+
             // Add '=' after field names
             if is_field_name {
                 suggestion_to_insert.push('=');
             }
-            
+
             // Replace the current token with the suggestion
-            self.input.replace_range(token_start..self.cursor_position, &suggestion_to_insert);
+            self.input
+                .replace_range(token_start..self.cursor_position, &suggestion_to_insert);
             self.cursor_position = token_start + suggestion_to_insert.len();
-            
+
             self.autocomplete_shown = false;
             self.autocomplete_items.clear();
             self.reset_error_timer();
-            
+
             Some(suggestion)
         } else {
             None
@@ -194,11 +198,12 @@ impl SearchPopup {
         // Calculate popup size
         let popup_width = 52;
         let base_height = 7; // Title + input + borders + footer
-        
+
         // Show all autocomplete items (up to 14 for field names)
         let max_autocomplete_items = 14;
         let autocomplete_height = if self.autocomplete_shown {
-            (self.autocomplete_items.len().min(max_autocomplete_items) + 2) as u16 // +2 for borders
+            (self.autocomplete_items.len().min(max_autocomplete_items) + 2) as u16
+        // +2 for borders
         } else {
             0
         };
@@ -209,8 +214,11 @@ impl SearchPopup {
         // Maximum height = base + max autocomplete + max error
         let max_popup_height = base_height + (max_autocomplete_items as u16 + 2) + 2;
         let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-        let popup_y = (area.height.saturating_sub(max_popup_height.min(area.height))) / 2;
-        
+        let popup_y = (area
+            .height
+            .saturating_sub(max_popup_height.min(area.height)))
+            / 2;
+
         let popup_area = Rect {
             x: popup_x,
             y: popup_y,
@@ -225,15 +233,15 @@ impl SearchPopup {
         let mut constraints = vec![
             Constraint::Length(3), // Title + input
         ];
-        
+
         if self.autocomplete_shown {
             constraints.push(Constraint::Length(autocomplete_height));
         }
-        
+
         if self.parse_error.is_some() {
             constraints.push(Constraint::Length(error_height));
         }
-        
+
         constraints.push(Constraint::Length(2)); // Footer
 
         let chunks = Layout::default()
@@ -266,14 +274,13 @@ impl SearchPopup {
     fn render_input(&self, f: &mut Frame, area: Rect) {
         // Highlight syntax in input
         let highlighted = self.highlight_syntax();
-        
-        let input_paragraph = Paragraph::new(highlighted)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title("Search Stations")
-                    .title_alignment(Alignment::Center),
-            );
+
+        let input_paragraph = Paragraph::new(highlighted).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Search Stations")
+                .title_alignment(Alignment::Center),
+        );
 
         f.render_widget(input_paragraph, area);
 
@@ -282,16 +289,17 @@ impl SearchPopup {
             // Calculate cursor position on screen
             let cursor_x = area.x + 1 + self.cursor_position as u16;
             let cursor_y = area.y + 1;
-            
+
             if cursor_x < area.x + area.width - 1 {
-                f.set_cursor(cursor_x, cursor_y);
+                f.set_cursor_position((cursor_x, cursor_y));
             }
         }
     }
 
     fn render_autocomplete(&self, f: &mut Frame, area: Rect) {
         let visible_items = 14; // Show all items up to 14
-        let items: Vec<ListItem> = self.autocomplete_items
+        let items: Vec<ListItem> = self
+            .autocomplete_items
             .iter()
             .skip(self.autocomplete_scroll_offset)
             .take(visible_items)
@@ -329,12 +337,7 @@ impl SearchPopup {
             " No suggestions ".to_string()
         };
 
-        let list = List::new(items)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(title)
-            );
+        let list = List::new(items).block(Block::default().borders(Borders::ALL).title(title));
 
         f.render_widget(list, area);
     }
@@ -342,8 +345,7 @@ impl SearchPopup {
     fn render_error(&self, f: &mut Frame, area: Rect) {
         if let Some(error) = &self.parse_error {
             let error_text = format!("{}", error);
-            let paragraph = Paragraph::new(error_text)
-                .style(Style::default().fg(Color::Red));
+            let paragraph = Paragraph::new(error_text).style(Style::default().fg(Color::Red));
             f.render_widget(paragraph, area);
         }
     }
@@ -356,7 +358,7 @@ impl SearchPopup {
         f.render_widget(paragraph, area);
     }
 
-    fn highlight_syntax(&self) -> Line {
+    fn highlight_syntax(&self) -> Line<'_> {
         // Parse the input and highlight fields
         let mut spans = Vec::new();
         let mut current_pos = 0;
@@ -366,33 +368,39 @@ impl SearchPopup {
             // Find the position of this part in the original string
             if let Some(pos) = self.input[current_pos..].find(part) {
                 let actual_pos = current_pos + pos;
-                
+
                 // Add any spaces before this part
                 if actual_pos > current_pos {
                     spans.push(Span::raw(&self.input[current_pos..actual_pos]));
                 }
-                
+
                 // Check if this is a field=value pair
                 if let Some(equals_pos) = part.find('=') {
                     let field = &part[..equals_pos];
                     let value_with_equals = &part[equals_pos..];
-                    
+
                     // Check if field is valid
-                    let field_style = if crate::search::parser::validate_field(&field.to_lowercase()) {
-                        Style::default().fg(Color::Green)
-                    } else {
-                        Style::default().fg(Color::Red)
-                    };
-                    
+                    let field_style =
+                        if crate::search::parser::validate_field(&field.to_lowercase()) {
+                            Style::default().fg(Color::Green)
+                        } else {
+                            Style::default().fg(Color::Red)
+                        };
+
                     spans.push(Span::styled(field.to_string(), field_style));
-                    
+
                     // Check if this is a country or language field with commas
                     let field_lower = field.to_lowercase();
-                    if (field_lower == "country" || field_lower == "language") && value_with_equals.contains(',') {
+                    if (field_lower == "country" || field_lower == "language")
+                        && value_with_equals.contains(',')
+                    {
                         // Highlight commas in red for country/language fields
                         for ch in value_with_equals.chars() {
                             if ch == ',' {
-                                spans.push(Span::styled(ch.to_string(), Style::default().fg(Color::Red)));
+                                spans.push(Span::styled(
+                                    ch.to_string(),
+                                    Style::default().fg(Color::Red),
+                                ));
                             } else {
                                 spans.push(Span::raw(ch.to_string()));
                             }
@@ -412,21 +420,21 @@ impl SearchPopup {
                     };
                     spans.push(Span::styled(part.to_string(), style));
                 }
-                
+
                 current_pos = actual_pos + part.len();
             }
         }
-        
+
         // Add any remaining text
         if current_pos < self.input.len() {
             spans.push(Span::raw(&self.input[current_pos..]));
         }
-        
+
         // If input is empty, show a dim cursor
         if spans.is_empty() {
             spans.push(Span::raw(""));
         }
-        
+
         Line::from(spans)
     }
 }
