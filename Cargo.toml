@@ -25,7 +25,7 @@ name = "krofmc"
 path = "src/bin/cli/main.rs"
 
 [[bin]]
-name = "player-daemon"
+name = "krofm-daemon"
 path = "src/bin/player-daemon/main.rs"
 
 [dependencies]
