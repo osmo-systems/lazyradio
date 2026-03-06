@@ -1,6 +1,6 @@
 //! LazyRadio TUI Application
 //! This is the main entry point for the LazyRadio terminal user interface.
-//! To use the library programmatically, see the lazyradio crate documentation.
+//! To use the library programmatically, see the krofm crate documentation.
 
 fn main() {
     eprintln!("Use 'cargo run --bin tui' to start the TUI application");

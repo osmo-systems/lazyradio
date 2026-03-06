@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use lazyradio::{
+use krofm::{
     RadioBrowserClient, Station, Config, PlayerInfo,
     search::{AutocompleteData, SearchQuery, format_query, is_default_query},
     storage::{CacheManager, FavoritesManager, HistoryManager, SearchHistoryManager},
@@ -197,7 +197,7 @@ impl App {
     // Search popup methods
 
     pub fn open_search_popup(&mut self) {
-        use lazyradio::search::get_suggestions;
+        use krofm::search::get_suggestions;
         
         // Pre-fill with current query if not default
         let initial_query = if is_default_query(&self.current_query) {

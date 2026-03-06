@@ -16,7 +16,7 @@ use crate::config::get_data_dir;
 use crate::ipc::{ClientMessage, DaemonMessage};
 use crate::player::PlayerInfo;
 
-const DAEMON_SOCKET: &str = ".lazyradio-player.sock";
+const DAEMON_SOCKET: &str = ".krofm-player.sock";
 const DAEMON_BINARY: &str = "player-daemon";
 
 /// Client for communicating with the player daemon

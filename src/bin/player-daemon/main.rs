@@ -15,20 +15,20 @@ use tokio::sync::Mutex;
 use tracing::{info, error, debug};
 use tracing_subscriber;
 
-use lazyradio::{
+use krofm::{
     config::get_data_dir,
     player::{AudioPlayer, PlayerCommand},
     ClientMessage, DaemonMessage,
 };
 
-const DAEMON_SOCKET: &str = ".lazyradio-player.sock";
+const DAEMON_SOCKET: &str = ".krofm-player.sock";
 const IDLE_TIMEOUT_SECS: u64 = 30 * 60; // 30 minutes
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
     let data_dir = get_data_dir()?;
-    let log_file = tracing_appender::rolling::daily(&data_dir, "lazyradio-daemon.log");
+    let log_file = tracing_appender::rolling::daily(&data_dir, "krofm-daemon.log");
     tracing_subscriber::fmt()
         .with_writer(log_file)
         .with_ansi(false)

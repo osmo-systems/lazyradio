@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::app::{App, Tab};
-use lazyradio::PlayerState;
+use krofm::PlayerState;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
@@ -408,7 +408,7 @@ fn draw_status_bar(f: &mut Frame, _app: &App, area: Rect) {
     // Version info on the right
     let version = env!("CARGO_PKG_VERSION");
     let version_line = Line::from(vec![
-        Span::styled("lazyradio ", text_style),
+        Span::styled("krofm ", text_style),
         Span::styled(version, key_style),
     ]);
 

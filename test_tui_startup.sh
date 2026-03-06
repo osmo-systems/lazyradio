@@ -24,9 +24,9 @@ ps aux | grep player-daemon | grep -v grep || echo "  No daemon running"
 # Check if socket exists
 echo ""
 echo "Checking for socket file..."
-ls -la ~/Library/Application\ Support/lazyradio/.lazyradio-player.sock 2>/dev/null || echo "  Socket not found"
+ls -la ~/Library/Application\ Support/krofm/.krofm-player.sock 2>/dev/null || echo "  Socket not found"
 
 # Check daemon log
 echo ""
 echo "Last 5 lines of daemon log:"
-tail -5 ~/Library/Application\ Support/lazyradio/lazyradio-daemon.log.2026-03-06 2>/dev/null || echo "  Log not found"
+tail -5 ~/Library/Application\ Support/krofm/krofm-daemon.log.2026-03-06 2>/dev/null || echo "  Log not found"

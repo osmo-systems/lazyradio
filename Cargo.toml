@@ -1,27 +1,27 @@
 [package]
-name = "lazyradio"
+name = "krofm"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.93"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Antoine"]
 description = "A lightning-fast terminal-based web radio player with advanced search, powered by Radio Browser"
-repository = "https://github.com/osmo-systems/lazyradio"
-homepage = "https://github.com/osmo-systems/lazyradio"
+repository = "https://github.com/osmo-systems/krofm"
+homepage = "https://github.com/osmo-systems/krofm"
 keywords = ["radio", "tui", "terminal", "audio", "player"]
 categories = ["command-line-utilities", "multimedia::audio"]
 readme = "README.md"
 
 [lib]
-name = "lazyradio"
+name = "krofm"
 path = "src/lib.rs"
 
 [[bin]]
-name = "tui"
+name = "krofmt"
 path = "src/bin/tui/main.rs"
 
 [[bin]]
-name = "cli"
+name = "krofmc"
 path = "src/bin/cli/main.rs"
 
 [[bin]]

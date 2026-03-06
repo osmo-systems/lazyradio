@@ -54,7 +54,7 @@ src/
 ## IPC Protocol
 
 ### Communication Pattern
-- **Transport**: Unix domain socket at `~/.config/lazyradio/.lazyradio-player.sock`
+- **Transport**: Unix domain socket at `~/.config/krofm/.krofm-player.sock`
 - **Format**: JSON Lines (one JSON object per line)
 - **Pattern**: Request/Response (client sends message, daemon responds)
 
@@ -127,7 +127,7 @@ Background process that handles audio playback:
 - Auto-starts when first client connects
 - Continues playing after clients disconnect
 - Auto-shuts down after 30 minutes with no clients and not playing
-- Logs to `~/.config/lazyradio/lazyradio-daemon.log.YYYY-MM-DD`
+- Logs to `~/.config/krofm/krofm-daemon.log.YYYY-MM-DD`
 
 #### TUI Binary (`tui`)
 Terminal UI using Ratatui (connects to daemon):
@@ -242,18 +242,18 @@ Outputs:
 ## Configuration & Data
 
 ### Directories
-- **macOS**: `~/Library/Application Support/lazyradio/`
-- **Linux**: `~/.config/lazyradio/`
-- **Windows**: `%APPDATA%\lazyradio\`
+- **macOS**: `~/Library/Application Support/krofm/`
+- **Linux**: `~/.config/krofm/`
+- **Windows**: `%APPDATA%\krofm\`
 
 ### Files
 - `config.toml` - Application configuration (volume, last station, etc.)
 - `favorites.toml` - Favorite stations
 - `history.toml` - Play history
-- `.lazyradio-player.sock` - Unix domain socket (created at runtime)
-- `lazyradio-daemon.log.*` - Daemon logs (dated)
-- `lazyradio-tui.log.*` - TUI logs (dated)
-- `lazyradio-cli.log.*` - CLI logs (dated)
+- `.krofm-player.sock` - Unix domain socket (created at runtime)
+- `krofm-daemon.log.*` - Daemon logs (dated)
+- `krofm-tui.log.*` - TUI logs (dated)
+- `krofm-cli.log.*` - CLI logs (dated)
 
 ## Why This Architecture?
 
@@ -277,7 +277,7 @@ To add a new client (e.g., web UI):
    ```
 3. Use the library:
    ```rust
-   use lazyradio::{PlayerDaemonClient, PlayerDaemonConnection};
+   use krofm::{PlayerDaemonClient, PlayerDaemonConnection};
    
    let client = PlayerDaemonClient::new()?;
    let mut conn = client.connect().await?;
@@ -288,7 +288,7 @@ To add a new client (e.g., web UI):
 
 ### Manual Testing Workflow
 1. Build: `cargo build --release`
-2. Start fresh: `pkill -f player-daemon; rm ~/.config/lazyradio/.lazyradio-player.sock`
+2. Start fresh: `pkill -f player-daemon; rm ~/.config/krofm/.krofm-player.sock`
 3. Test CLI: `./target/release/cli status` → daemon auto-starts
 4. Test playing: `./target/release/cli play-url "Test" "http://url"`
 5. Verify persistence: Kill CLI, daemon continues playing

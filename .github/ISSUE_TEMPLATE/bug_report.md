@@ -33,7 +33,7 @@ What actually happened.
 
 ## Logs
 
-Please attach relevant logs from `~/.local/share/lazyradio/lazyradio.log` (Linux) or equivalent path on your OS.
+Please attach relevant logs from `~/.local/share/krofm/krofm.log` (Linux) or equivalent path on your OS.
 
 ```
 Paste relevant log entries here

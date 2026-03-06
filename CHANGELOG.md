@@ -113,8 +113,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for information on how to contribute to L
 
 ## Links
 
-- [Repository](https://github.com/osmo-systems/lazyradio)
-- [Issue Tracker](https://github.com/osmo-systems/lazyradio/issues)
+- [Repository](https://github.com/osmo-systems/krofm)
+- [Issue Tracker](https://github.com/osmo-systems/krofm/issues)
 - [Radio Browser API](https://www.radio-browser.info/)
 
 ---

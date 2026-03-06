@@ -31,7 +31,7 @@ Before creating a bug report, please check existing issues to avoid duplicates. 
 - **Expected behavior**: What should happen
 - **Actual behavior**: What actually happens
 - **Environment**: OS, Rust version, terminal emulator
-- **Logs**: Relevant log entries from `~/.local/share/lazyradio/lazyradio.log`
+- **Logs**: Relevant log entries from `~/.local/share/krofm/krofm.log`
 
 Use the bug report template in `.github/ISSUE_TEMPLATE/bug_report.md`.
 
@@ -59,8 +59,8 @@ We welcome code contributions! Here's how to get started:
 1. **Fork the repository** on GitHub
 2. **Clone your fork**:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/lazyradio.git
-   cd lazyradio
+   git clone https://github.com/YOUR_USERNAME/krofm.git
+   cd krofm
    ```
 3. **Create a branch**:
    ```bash
@@ -92,8 +92,8 @@ We welcome code contributions! Here's how to get started:
 
 ```bash
 # Clone the repository
-git clone https://github.com/osmo-systems/lazyradio.git
-cd lazyradio
+git clone https://github.com/osmo-systems/krofm.git
+cd krofm
 
 # Build in debug mode (faster compilation, slower runtime)
 cargo build
@@ -139,13 +139,13 @@ cargo clippy -- -D warnings
 ### Log Files
 
 When developing, logs are written to:
-- **Linux**: `~/.local/share/lazyradio/lazyradio.log`
-- **macOS**: `~/Library/Application Support/lazyradio/lazyradio.log`
-- **Windows**: `%APPDATA%\lazyradio\lazyradio.log`
+- **Linux**: `~/.local/share/krofm/krofm.log`
+- **macOS**: `~/Library/Application Support/krofm/krofm.log`
+- **Windows**: `%APPDATA%\krofm\krofm.log`
 
 Use `tail -f` to monitor logs in real-time:
 ```bash
-tail -f ~/.local/share/lazyradio/lazyradio.log
+tail -f ~/.local/share/krofm/krofm.log
 ```
 
 ## Project Structure
@@ -392,8 +392,8 @@ Be patient and respectful during review. Feedback is meant to improve the code, 
 
 If you have questions not covered here:
 
-1. Check existing [GitHub Issues](https://github.com/osmo-systems/lazyradio/issues)
-2. Search [Discussions](https://github.com/osmo-systems/lazyradio/discussions) (if enabled)
+1. Check existing [GitHub Issues](https://github.com/osmo-systems/krofm/issues)
+2. Search [Discussions](https://github.com/osmo-systems/krofm/discussions) (if enabled)
 3. Open a new issue with the "question" template
 
 ## Thank You!

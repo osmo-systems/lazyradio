@@ -1,7 +1,7 @@
-//! LazyRadio CLI Application
+//! Krofm CLI Application
 //! 
 //! A command-line interface for controlling the radio player daemon.
-//! Supports one-liner commands like: radiocli pause, radiocli volume 50, etc.
+//! Supports one-liner commands like: krofmc pause, krofmc volume 50, etc.
 
 mod search;
 
@@ -11,7 +11,7 @@ use tracing::info;
 use crossterm::terminal;
 use std::io::Write;
 
-use lazyradio::{
+use krofm::{
     config::{cleanup_old_logs, get_data_dir, Config},
     api::RadioBrowserClient,
     PlayerDaemonClient,
@@ -23,7 +23,7 @@ use search::{parse_search_args, InteractiveSearch};
 async fn main() -> Result<()> {
     // Initialize logging
     let data_dir = get_data_dir()?;
-    let log_file = tracing_appender::rolling::daily(&data_dir, "lazyradio-cli.log");
+    let log_file = tracing_appender::rolling::daily(&data_dir, "krofm-cli.log");
     tracing_subscriber::fmt()
         .with_writer(log_file)
         .with_ansi(false)
@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
             match daemon_conn.get_status().await {
                 Ok(info) => {
                     // If stopped and no station is playing, try to resume last station
-                    if info.state == lazyradio::PlayerState::Stopped 
+                    if info.state == krofm::PlayerState::Stopped 
                         && info.station_name.is_empty() 
                         && info.station_url.is_empty() {
                         
@@ -77,11 +77,11 @@ async fn main() -> Result<()> {
                     // Show current status
                     println!("\nPlayer Status:");
                     println!("  State:       {}", match info.state {
-                        lazyradio::PlayerState::Playing => "Playing",
-                        lazyradio::PlayerState::Paused => "Paused",
-                        lazyradio::PlayerState::Stopped => "Stopped",
-                        lazyradio::PlayerState::Loading => "Loading",
-                        lazyradio::PlayerState::Error => "Error",
+                        krofm::PlayerState::Playing => "Playing",
+                        krofm::PlayerState::Paused => "Paused",
+                        krofm::PlayerState::Stopped => "Stopped",
+                        krofm::PlayerState::Loading => "Loading",
+                        krofm::PlayerState::Error => "Error",
                     });
                     println!("  Station:     {}", if info.station_name.is_empty() { "None" } else { &info.station_name });
                     println!("  Volume:      {:.0}%", info.volume * 100.0);
@@ -270,7 +270,7 @@ async fn run_direct_search(args: &[String], terminal_width: u16) -> Result<()> {
     
     // Load favorites for display
     let data_dir = get_data_dir()?;
-    let favorites = lazyradio::FavoritesManager::new(&data_dir)?;
+    let favorites = krofm::FavoritesManager::new(&data_dir)?;
     
     // Display results
     println!("{}", search::format_station_list(
@@ -293,10 +293,10 @@ async fn run_direct_search(args: &[String], terminal_width: u16) -> Result<()> {
 }
 
 /// Run interactive search mode with sequential filter prompts
-async fn run_interactive_search(_daemon_conn: &lazyradio::PlayerDaemonConnection, data_dir: &std::path::PathBuf) -> Result<()> {
+async fn run_interactive_search(_daemon_conn: &krofm::PlayerDaemonConnection, data_dir: &std::path::PathBuf) -> Result<()> {
     use std::io::Write;
     
-    let mut query = lazyradio::search::SearchQuery::default();
+    let mut query = krofm::search::SearchQuery::default();
     let (terminal_width, _) = terminal::size().unwrap_or((120, 30));
     
     println!("\n=== Interactive Search ===\n");
@@ -336,7 +336,7 @@ async fn run_interactive_search(_daemon_conn: &lazyradio::PlayerDaemonConnection
         Some((station_name, station_url)) => {
             // Play the selected station
             // Create a new connection (daemon_conn is immutable reference)
-            let daemon_client = lazyradio::PlayerDaemonClient::new()?;
+            let daemon_client = krofm::PlayerDaemonClient::new()?;
             let mut new_conn = daemon_client.connect().await?;
             
             if let Err(e) = new_conn.play(station_name.clone(), station_url.clone()).await {
@@ -361,9 +361,9 @@ async fn run_interactive_search(_daemon_conn: &lazyradio::PlayerDaemonConnection
 
 fn print_help() {
     println!("\n╭────────────────────────────────────────────────────────────┐");
-    println!("│ LazyRadio CLI - Radio Player Control                       │");
+    println!("│ Krofm - Radio Player Control                               │");
     println!("├────────────────────────────────────────────────────────────┤");
-    println!("│ Usage: radiocli <command> [options]                        │");
+    println!("│ Usage: krofmc <command> [options]                          │");
     println!("│                                                            │");
     println!("│ Commands:                                                  │");
     println!("│   status              - Show current player status         │");

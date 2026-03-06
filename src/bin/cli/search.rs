@@ -4,7 +4,7 @@ use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use crossterm::terminal::{enable_raw_mode, disable_raw_mode};
 use std::{io::{self, Write}, time::Duration};
-use lazyradio::{
+use krofm::{
     api::{RadioBrowserClient, Station},
     config::get_data_dir,
     search::SearchQuery,

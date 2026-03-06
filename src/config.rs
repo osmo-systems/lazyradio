@@ -71,7 +71,7 @@ impl Config {
 pub fn get_data_dir() -> Result<PathBuf> {
     let data_dir = dirs::data_dir()
         .context("Failed to get data directory")?
-        .join("lazyradio");
+        .join("krofm");
 
     if !data_dir.exists() {
         fs::create_dir_all(&data_dir)
@@ -102,8 +102,8 @@ pub fn cleanup_old_logs(data_dir: &PathBuf, max_age_days: u64) -> Result<()> {
         // Only process files that match the log pattern
         if path.is_file() {
             if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-                // Match log files like "lazyradio.log.2026-03-01" but not the current "lazyradio.log"
-                if filename.starts_with("lazyradio.log.") {
+                // Match log files like "krofm.log.2026-03-01" but not the current "krofm.log"
+                if filename.starts_with("krofm.log.") {
                     // Get file metadata to check age
                     if let Ok(metadata) = fs::metadata(&path) {
                         if let Ok(modified) = metadata.modified() {
