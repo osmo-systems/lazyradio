@@ -51,3 +51,8 @@ unicode-width = "0.1"
 urlencoding = "2.1"
 futures-util = "0.3.32"
 stream-download = "0.24.0"
+
+[profile.release]
+strip = true      # Remove symbols for smaller binary
+opt-level = "z"   # Optimize for size
+lto = true        # Link Time Optimization
