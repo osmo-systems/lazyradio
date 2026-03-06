@@ -3,15 +3,21 @@
 //! A command-line interface for controlling the radio player daemon.
 //! Supports one-liner commands like: radiocli pause, radiocli volume 50, etc.
 
+mod search;
+
 use anyhow::Result;
 use std::env;
 use tracing::info;
+use crossterm::terminal;
+use std::io::Write;
 
 use lazyradio::{
     config::{cleanup_old_logs, get_data_dir, Config},
     api::RadioBrowserClient,
     PlayerDaemonClient,
 };
+
+use search::{parse_search_args, InteractiveSearch};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -219,50 +225,16 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         Some("search") => {
-            // Search for stations: radiocli search "query"
-            match args.get(2) {
-                Some(query) => {
-                    // Create API client and search
-                    match RadioBrowserClient::new().await {
-                        Ok(mut api_client) => {
-                            println!("Searching for: {}", query);
-                            match api_client.search_stations(query, 5).await {
-                                Ok(stations) => {
-                                    if stations.is_empty() {
-                                        println!("No stations found for '{}'", query);
-                                    } else {
-                                        println!("\nTop {} results:\n", stations.len());
-                                        for (idx, station) in stations.iter().enumerate() {
-                                            println!("  {}. {}", idx + 1, station.name);
-                                            if !station.country.is_empty() {
-                                                print!("     Country: {}", station.country);
-                                            }
-                                            if !station.language.is_empty() {
-                                                print!(" | Language: {}", station.language);
-                                            }
-                                            println!();
-                                            println!("     URL: {}", station.url);
-                                            println!("     Votes: {} | Codec: {}", station.votes, station.codec);
-                                            println!();
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    eprintln!("Error: Failed to search stations: {}", e);
-                                    return Err(e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("Error: Failed to initialize API client: {}", e);
-                            return Err(e);
-                        }
-                    }
-                }
-                None => {
-                    eprintln!("Error: Usage: radiocli search <query>");
-                    return Err(anyhow::anyhow!("Missing search query"));
-                }
+            // Get terminal width for formatting
+            let (terminal_width, _) = terminal::size().unwrap_or((120, 30));
+
+            // Check if interactive mode (no args) or direct search (args provided)
+            if args.len() <= 2 {
+                // Interactive mode: sequential filter prompts
+                run_interactive_search(&daemon_conn, &data_dir).await?;
+            } else {
+                // Direct search mode: parse args and fetch results
+                run_direct_search(&args, terminal_width).await?;
             }
         }
         Some("help") | Some("-h") | Some("--help") => {
@@ -275,6 +247,115 @@ async fn main() -> Result<()> {
     }
 
     info!("LazyRadio CLI completed successfully");
+    Ok(())
+}
+
+/// Run direct search with provided arguments
+async fn run_direct_search(args: &[String], terminal_width: u16) -> Result<()> {
+    let query = parse_search_args(args);
+    
+    print!("Fetching");
+    std::io::stdout().flush()?;
+    
+    // Create API client and search
+    let mut api_client = RadioBrowserClient::new().await?;
+    let results = api_client.advanced_search(&query).await?;
+    
+    println!(" ✓");
+    
+    if results.is_empty() {
+        println!("No stations found");
+        return Ok(());
+    }
+    
+    // Load favorites for display
+    let data_dir = get_data_dir()?;
+    let favorites = lazyradio::FavoritesManager::new(&data_dir)?;
+    
+    // Display results
+    println!("{}", search::format_station_list(
+        &results,
+        0,
+        &favorites,
+        terminal_width as usize,
+        query.offset,
+    ));
+    
+    // Show pagination info
+    let total_shown = query.offset + results.len();
+    println!("\n(Showing results {}-{})", query.offset + 1, total_shown);
+    
+    if results.len() >= query.limit {
+        println!("Use --skip {} to fetch next page", query.offset + query.limit);
+    }
+    
+    Ok(())
+}
+
+/// Run interactive search mode with sequential filter prompts
+async fn run_interactive_search(_daemon_conn: &lazyradio::PlayerDaemonConnection, data_dir: &std::path::PathBuf) -> Result<()> {
+    use std::io::Write;
+    
+    let mut query = lazyradio::search::SearchQuery::default();
+    let (terminal_width, _) = terminal::size().unwrap_or((120, 30));
+    
+    println!("\n=== Interactive Search ===\n");
+    
+    // Simple filter input
+    print!("Name (press Enter to skip): ");
+    std::io::stdout().flush()?;
+    let mut name_input = String::new();
+    std::io::stdin().read_line(&mut name_input)?;
+    let name_input = name_input.trim();
+    if !name_input.is_empty() {
+        query.name = Some(name_input.to_string());
+    }
+    
+    print!("Country (press Enter to skip): ");
+    std::io::stdout().flush()?;
+    let mut country_input = String::new();
+    std::io::stdin().read_line(&mut country_input)?;
+    let country_input = country_input.trim();
+    if !country_input.is_empty() {
+        query.country = Some(country_input.to_string());
+    }
+    
+    print!("Language (press Enter to skip): ");
+    std::io::stdout().flush()?;
+    let mut language_input = String::new();
+    std::io::stdin().read_line(&mut language_input)?;
+    let language_input = language_input.trim();
+    if !language_input.is_empty() {
+        query.language = Some(language_input.to_string());
+    }
+    
+    // Create interactive search session and run
+    let mut interactive = InteractiveSearch::new().await?;
+    
+    match interactive.run(query, terminal_width).await? {
+        Some((station_name, station_url)) => {
+            // Play the selected station
+            // Create a new connection (daemon_conn is immutable reference)
+            let daemon_client = lazyradio::PlayerDaemonClient::new()?;
+            let mut new_conn = daemon_client.connect().await?;
+            
+            if let Err(e) = new_conn.play(station_name.clone(), station_url.clone()).await {
+                eprintln!("Error: Failed to play station: {}", e);
+                return Err(e);
+            }
+            
+            // Save as last played
+            let mut config = Config::load(data_dir)?;
+            config.update_session_state(config.default_volume, Some(station_name.clone()), Some(station_url));
+            let _ = config.save(data_dir);
+            
+            println!("Playing: {}", station_name);
+        }
+        None => {
+            println!("Search cancelled");
+        }
+    }
+    
     Ok(())
 }
 
