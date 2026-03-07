@@ -7,7 +7,7 @@ use ratatui::{
 };
 use std::time::Instant;
 
-use krofm::search::{detect_context, parse_query, parser, AutocompleteContext, ParseError};
+use radm::search::{detect_context, parse_query, parser, AutocompleteContext, ParseError};
 
 pub struct SearchPopup {
     pub input: String,

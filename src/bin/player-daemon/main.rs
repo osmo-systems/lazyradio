@@ -15,20 +15,20 @@ use tokio::sync::Mutex;
 use tracing::{info, error, debug};
 use tracing_subscriber;
 
-use krofm::{
-    config::get_data_dir,
+use radm::{
+    config::{get_data_dir, Config},
     player::{AudioPlayer, PlayerCommand},
     ClientMessage, DaemonMessage,
 };
 
-const DAEMON_SOCKET: &str = ".krofm-player.sock";
+const DAEMON_SOCKET: &str = ".radm-player.sock";
 const IDLE_TIMEOUT_SECS: u64 = 30 * 60; // 30 minutes
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
     let data_dir = get_data_dir()?;
-    let log_file = tracing_appender::rolling::daily(&data_dir, "krofm-daemon.log");
+    let log_file = tracing_appender::rolling::daily(&data_dir, "rad-daemon.log");
     tracing_subscriber::fmt()
         .with_writer(log_file)
         .with_ansi(false)
@@ -45,7 +45,7 @@ async fn main() -> Result<()> {
     }
 
     // Initialize audio player
-    let (audio_player, _player_cmd_rx) = match AudioPlayer::new() {
+    let (mut audio_player, _player_cmd_rx) = match AudioPlayer::new() {
         Ok((player, rx)) => {
             info!("Audio player initialized");
             (player, rx)
@@ -56,6 +56,14 @@ async fn main() -> Result<()> {
             return Err(e);
         }
     };
+
+    // Load saved volume from config if available
+    if let Ok(config) = Config::load(&data_dir) {
+        if let Some(saved_volume) = config.last_volume {
+            info!("Restoring saved volume: {:.2}", saved_volume);
+            audio_player.set_volume(saved_volume);
+        }
+    }
 
     let player = Arc::new(Mutex::new(audio_player));
 

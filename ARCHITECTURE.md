@@ -142,30 +142,27 @@ Terminal UI using Ratatui (connects to daemon):
 Command-line tool for programmatic control:
 
 - **`main.rs`** - Command dispatcher
-- **Commands**: `status`, `play`, `pause`, `resume`, `stop`, `volume`, `play-url`, `search`, `quit`, `help`
+- **Commands**: `info`, `pause`, `resume`, `zap`, `volume`, `find`, `quit`, `help`
 
 **Run:** `cargo run --bin cli`
 
 **Example Usage:**
 ```bash
 # Get player status
-radiocli status
+radc info
 
 # Search for stations
-radiocli search "jazz"
-
-# Play a station (saves as last played)
-radiocli play-url "Station Name" "http://stream.url"
+radc find "jazz"
 
 # Control playback
-radiocli pause
-radiocli resume
-radiocli stop
+radc pause
+radc resume
+radc zap
 
 # Control volume
-radiocli volume 75           # Set to 75%
-radiocli volume --up 10      # Increase by 10%
-radiocli volume --down 5     # Decrease by 5%
+radc volume 75           # Set to 75%
+radc volume --up 10      # Increase by 10%
+radc volume --down 5     # Decrease by 5%
 ```
 
 ## Daemon Lifecycle
@@ -193,7 +190,7 @@ Daemon monitors activity every minute:
 ### Playing a Station via CLI
 
 ```
-User: radiocli play-url "Station" "http://..."
+User: radc find "Station" "http://..."
   ↓
 CLI: Connect to daemon (auto-start if needed)
   ↓

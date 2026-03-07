@@ -369,6 +369,8 @@ impl AudioPlayer {
 
     pub fn set_volume(&mut self, volume: f32) {
         let volume = volume.clamp(0.0, 1.0);
+        // Quantize to nearest 1% to avoid floating point precision issues
+        let volume = (volume * 100.0).round() / 100.0;
         debug!("Setting volume to: {:.2}", volume);
         
         if let Some(ref sink) = *self.sink.lock().unwrap() {

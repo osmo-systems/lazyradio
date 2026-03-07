@@ -16,8 +16,8 @@ use crate::config::get_data_dir;
 use crate::ipc::{ClientMessage, DaemonMessage};
 use crate::player::PlayerInfo;
 
-const DAEMON_SOCKET: &str = ".krofm-player.sock";
-const DAEMON_BINARY: &str = "player-daemon";
+const DAEMON_SOCKET: &str = ".radm-player.sock";
+const DAEMON_BINARY: &str = "rad-daemon";
 
 /// Client for communicating with the player daemon
 pub struct PlayerDaemonClient {
@@ -42,6 +42,15 @@ impl PlayerDaemonClient {
 
         // Daemon not running, try to start it
         info!("Player daemon not running, attempting to start it...");
+        
+        // Remove stale socket file if it exists
+        if self.socket_path.exists() {
+            info!("Removing stale socket file: {}", self.socket_path.display());
+            if let Err(e) = std::fs::remove_file(&self.socket_path) {
+                tracing::warn!("Failed to remove stale socket file: {}", e);
+            }
+        }
+        
         self.start_daemon().await?;
 
         // Wait for daemon to be ready
@@ -92,7 +101,7 @@ impl PlayerDaemonClient {
         // Fallback: try from PATH
         Command::new(DAEMON_BINARY)
             .spawn()
-            .context("Failed to start player daemon. Make sure 'player-daemon' is installed and in PATH or in the same directory as this executable")?;
+            .context("Failed to start player daemon. Make sure 'rad-daemon' is installed and in PATH or in the same directory as this executable")?;
 
         info!("Spawned player daemon process from PATH");
         Ok(())

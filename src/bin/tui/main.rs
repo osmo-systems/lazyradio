@@ -14,7 +14,7 @@ use tracing::info;
 use tracing_subscriber;
 
 use crate::app::App;
-use krofm::{
+use radm::{
     config::{cleanup_old_logs, get_data_dir},
     search::{get_suggestions, parse_query},
     PlayerDaemonClient,
@@ -25,7 +25,7 @@ use krofm::{
 async fn main() -> Result<()> {
     // Initialize logging
     let data_dir = get_data_dir()?;
-    let log_file = tracing_appender::rolling::daily(&data_dir, "krofm.log");
+    let log_file = tracing_appender::rolling::daily(&data_dir, "radt.log");
     tracing_subscriber::fmt()
         .with_writer(log_file)
         .with_ansi(false)
@@ -197,7 +197,7 @@ async fn main() -> Result<()> {
 
 async fn handle_key_event(
     app: &mut App,
-    daemon_conn: &mut krofm::PlayerDaemonConnection,
+    daemon_conn: &mut radm::PlayerDaemonConnection,
     key: KeyCode,
     modifiers: KeyModifiers,
 ) {
@@ -344,11 +344,11 @@ async fn handle_key_event(
             }
         }
         KeyCode::Char(' ') => {
-            if app.player_info.state == krofm::PlayerState::Playing {
+            if app.player_info.state == radm::PlayerState::Playing {
                 let _ = app.pause(daemon_conn).await;
-            } else if app.player_info.state == krofm::PlayerState::Paused {
+            } else if app.player_info.state == radm::PlayerState::Paused {
                 let _ = app.resume(daemon_conn).await;
-            } else if app.player_info.state == krofm::PlayerState::Stopped && !app.player_info.station_url.is_empty() {
+            } else if app.player_info.state == radm::PlayerState::Stopped && !app.player_info.station_url.is_empty() {
                 // If stopped but there's a restored station, play it
                 let _ = app.play_restored(daemon_conn).await;
             } else {

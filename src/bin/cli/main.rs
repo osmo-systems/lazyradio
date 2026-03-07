@@ -1,29 +1,27 @@
-//! Krofm CLI Application
+//! Radm CLI Application
 //! 
 //! A command-line interface for controlling the radio player daemon.
-//! Supports one-liner commands like: krofmc pause, krofmc volume 50, etc.
+//! Supports one-liner commands like: radc pause, radc volume 50, etc.
 
 mod search;
 
 use anyhow::Result;
 use std::env;
 use tracing::info;
-use crossterm::terminal;
-use std::io::Write;
 
-use krofm::{
+use radm::{
     config::{cleanup_old_logs, get_data_dir, Config},
     api::RadioBrowserClient,
     PlayerDaemonClient,
 };
 
-use search::{parse_search_args, InteractiveSearch};
+use search::{parse_search_args, run_interactive_search_with_select, SearchAction};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
     let data_dir = get_data_dir()?;
-    let log_file = tracing_appender::rolling::daily(&data_dir, "krofm-cli.log");
+    let log_file = tracing_appender::rolling::daily(&data_dir, "radc.log");
     tracing_subscriber::fmt()
         .with_writer(log_file)
         .with_ansi(false)
@@ -39,49 +37,52 @@ async fn main() -> Result<()> {
     // Get command line arguments
     let args: Vec<String> = env::args().collect();
 
-    // Connect to player daemon (auto-starts if needed)
-    let daemon_client = PlayerDaemonClient::new()?;
-    let mut daemon_conn = match daemon_client.connect().await {
-        Ok(conn) => {
-            info!("Connected to player daemon");
-            conn
-        }
-        Err(e) => {
-            eprintln!("Error: Failed to connect to player daemon: {}", e);
-            return Err(e);
-        }
-    };
-
     // Parse and execute commands
+    // Note: Some commands need daemon connection, some don't
     match args.get(1).map(|s| s.as_str()) {
-        None | Some("status") => {
-            // Show status or resume last station if daemon just started
+        Some("find") => {
+            // Find command - no initial connection needed
+            if args.len() <= 2 {
+                // Interactive mode: sequential filter prompts
+                run_interactive_search(&data_dir).await?;
+            } else {
+                // Direct search mode: parse args and fetch results
+                run_direct_search(&args).await?;
+            }
+        }
+        Some("help") | Some("-h") | Some("--help") => {
+            print_help();
+        }
+        Some("quit") | Some("exit") => {
+            println!("Exiting LazyRadio CLI");
+            return Ok(());
+        }
+        _ => {
+            // All other commands need daemon connection
+            let daemon_client = PlayerDaemonClient::new()?;
+            let mut daemon_conn = match daemon_client.connect().await {
+                Ok(conn) => {
+                    info!("Connected to player daemon");
+                    conn
+                }
+                Err(e) => {
+                    eprintln!("Error: Failed to connect to player daemon: {}", e);
+                    return Err(e);
+                }
+            };
+            
+            match args.get(1).map(|s| s.as_str()) {
+        None | Some("info") => {
+            // Show current player status
             match daemon_conn.get_status().await {
                 Ok(info) => {
-                    // If stopped and no station is playing, try to resume last station
-                    if info.state == krofm::PlayerState::Stopped 
-                        && info.station_name.is_empty() 
-                        && info.station_url.is_empty() {
-                        
-                        // Load config to get last station
-                        let config = Config::load(&data_dir)?;
-                        if let (Some(name), Some(url)) = (config.last_station_name, config.last_station_url) {
-                            info!("Resuming last station: {} ({})", name, url);
-                            if let Err(e) = daemon_conn.play(name.clone(), url.clone()).await {
-                                eprintln!("Error: Failed to resume last station: {}", e);
-                                // Continue and show status anyway
-                            }
-                        }
-                    }
-                    
-                    // Show current status
                     println!("\nPlayer Status:");
                     println!("  State:       {}", match info.state {
-                        krofm::PlayerState::Playing => "Playing",
-                        krofm::PlayerState::Paused => "Paused",
-                        krofm::PlayerState::Stopped => "Stopped",
-                        krofm::PlayerState::Loading => "Loading",
-                        krofm::PlayerState::Error => "Error",
+                        radm::PlayerState::Playing => "Playing",
+                        radm::PlayerState::Paused => "Paused",
+                        radm::PlayerState::Stopped => "Stopped",
+                        radm::PlayerState::Loading => "Loading",
+                        radm::PlayerState::Error => "Error",
                     });
                     println!("  Station:     {}", if info.station_name.is_empty() { "None" } else { &info.station_name });
                     println!("  Volume:      {:.0}%", info.volume * 100.0);
@@ -96,36 +97,6 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Some("play") => {
-            // Resume playback
-            if let Err(e) = daemon_conn.resume().await {
-                eprintln!("Error: Failed to resume playback: {}", e);
-                return Err(e);
-            }
-            println!("Resumed");
-        }
-        Some("play-url") => {
-            // Play a station by name and URL: radiocli play-url "Station Name" "http://url"
-            match (args.get(2), args.get(3)) {
-                (Some(name), Some(url)) => {
-                    // Save station as last played
-                    let mut config = Config::load(&data_dir)?;
-                    config.update_session_state(config.default_volume, Some(name.clone()), Some(url.clone()));
-                    config.save(&data_dir)?;
-                    
-                    // Play the station
-                    if let Err(e) = daemon_conn.play(name.clone(), url.clone()).await {
-                        eprintln!("Error: Failed to play station: {}", e);
-                        return Err(e);
-                    }
-                    println!("Playing: {}", name);
-                }
-                _ => {
-                    eprintln!("Error: Usage: radiocli play-url <name> <url>");
-                    return Err(anyhow::anyhow!("Missing arguments for play-url command"));
-                }
-            }
-        }
         Some("pause") => {
             // Pause playback
             if let Err(e) = daemon_conn.pause().await {
@@ -134,16 +105,41 @@ async fn main() -> Result<()> {
             }
             println!("Paused");
         }
-        Some("resume") => {
-            // Resume playback
-            if let Err(e) = daemon_conn.resume().await {
-                eprintln!("Error: Failed to resume playback: {}", e);
-                return Err(e);
+        Some("start") => {
+            // Start playback - either resume paused or play last station
+            match daemon_conn.get_status().await {
+                Ok(info) => {
+                    if info.state == radm::PlayerState::Paused {
+                        // Resume paused playback
+                        if let Err(e) = daemon_conn.resume().await {
+                            eprintln!("Error: Failed to resume playback: {}", e);
+                            return Err(e);
+                        }
+                        println!("Resumed");
+                    } else if info.state == radm::PlayerState::Stopped {
+                        // Try to play last station
+                        let config = Config::load(&data_dir)?;
+                        if let (Some(name), Some(url)) = (config.last_station_name, config.last_station_url) {
+                            if let Err(e) = daemon_conn.play(name.clone(), url.clone()).await {
+                                eprintln!("Error: Failed to play last station: {}", e);
+                                return Err(e);
+                            }
+                            println!("Playing: {}", name);
+                        } else {
+                            println!("No station to play - use 'radc find' to search for stations");
+                        }
+                    } else {
+                        println!("Already playing");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: Failed to get player status: {}", e);
+                    return Err(e);
+                }
             }
-            println!("Resumed");
         }
-        Some("stop") => {
-            // Stop playback
+        Some("zap") => {
+            // Stop playback (kill/zap)
             if let Err(e) = daemon_conn.stop().await {
                 eprintln!("Error: Failed to stop playback: {}", e);
                 return Err(e);
@@ -154,9 +150,16 @@ async fn main() -> Result<()> {
             match args.get(2).map(|s| s.as_str()) {
                 Some("--up") => {
                     // Increase volume by specified amount (default 10%)
-                    let amount = args.get(3)
-                        .and_then(|s| s.parse::<f32>().ok())
-                        .unwrap_or(10.0) / 100.0;
+                    let amount = match args.get(3) {
+                        Some(s) => match s.parse::<f32>() {
+                            Ok(val) => val / 100.0,
+                            Err(_) => {
+                                eprintln!("Warning: Invalid amount '{}', using default 10%", s);
+                                0.1
+                            }
+                        },
+                        None => 0.1,
+                    };
                     
                     match daemon_conn.get_status().await {
                         Ok(info) => {
@@ -175,9 +178,16 @@ async fn main() -> Result<()> {
                 }
                 Some("--down") => {
                     // Decrease volume by specified amount (default 10%)
-                    let amount = args.get(3)
-                        .and_then(|s| s.parse::<f32>().ok())
-                        .unwrap_or(10.0) / 100.0;
+                    let amount = match args.get(3) {
+                        Some(s) => match s.parse::<f32>() {
+                            Ok(val) => val / 100.0,
+                            Err(_) => {
+                                eprintln!("Warning: Invalid amount '{}', using default 10%", s);
+                                0.1
+                            }
+                        },
+                        None => 0.1,
+                    };
                     
                     match daemon_conn.get_status().await {
                         Ok(info) => {
@@ -220,29 +230,13 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Some("quit") | Some("exit") => {
-            println!("Exiting LazyRadio CLI");
-            return Ok(());
-        }
-        Some("search") => {
-            // Get terminal width for formatting
-            let (terminal_width, _) = terminal::size().unwrap_or((120, 30));
-
-            // Check if interactive mode (no args) or direct search (args provided)
-            if args.len() <= 2 {
-                // Interactive mode: sequential filter prompts
-                run_interactive_search(&daemon_conn, &data_dir).await?;
-            } else {
-                // Direct search mode: parse args and fetch results
-                run_direct_search(&args, terminal_width).await?;
+                Some(cmd) => {
+                    eprintln!("Error: Unknown command '{}'. Use 'radc help' for available commands.", cmd);
+                    return Err(anyhow::anyhow!("Unknown command: {}", cmd));
+                }
             }
-        }
-        Some("help") | Some("-h") | Some("--help") => {
-            print_help();
-        }
-        Some(cmd) => {
-            eprintln!("Error: Unknown command '{}'. Use 'radiocli help' for available commands.", cmd);
-            return Err(anyhow::anyhow!("Unknown command: {}", cmd));
+            // Explicitly drop the daemon connection before exiting
+            drop(daemon_conn);
         }
     }
 
@@ -251,136 +245,396 @@ async fn main() -> Result<()> {
 }
 
 /// Run direct search with provided arguments
-async fn run_direct_search(args: &[String], terminal_width: u16) -> Result<()> {
-    let query = parse_search_args(args);
+async fn run_direct_search(args: &[String]) -> Result<()> {
+    let mut query = parse_search_args(args);
     
-    print!("Fetching");
-    std::io::stdout().flush()?;
-    
-    // Create API client and search
-    let mut api_client = RadioBrowserClient::new().await?;
-    let results = api_client.advanced_search(&query).await?;
-    
-    println!(" ✓");
-    
-    if results.is_empty() {
-        println!("No stations found");
-        return Ok(());
+    // Pagination loop
+    loop {
+        // Create API client and search with proper error handling for spinner
+        let spinner = cliclack::spinner();
+        spinner.start("Fetching stations...");
+        
+        let results = match async {
+            let mut api_client = RadioBrowserClient::new().await?;
+            api_client.advanced_search(&query).await
+        }.await {
+            Ok(results) => {
+                spinner.stop("Stations loaded");
+                // Give terminal a moment to settle after spinner stops
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                results
+            }
+            Err(e) => {
+                spinner.error("Failed to fetch stations");
+                return Err(e);
+            }
+        };
+        
+        if results.is_empty() && query.offset == 0 {
+            println!("No stations found");
+            return Ok(());
+        }
+        
+        // Use cliclack for interactive selection with pagination
+        match run_interactive_search_with_select(results, &query).await? {
+            Some(SearchAction::Play(station_name, station_url)) => {
+                // Show spinner while loading station
+                let spinner = cliclack::spinner();
+                spinner.start(format!("Loading station: {}", station_name));
+                
+                // Play the selected station
+                let daemon_client = radm::PlayerDaemonClient::new()?;
+                let mut conn = daemon_client.connect().await?;
+                
+                if let Err(e) = conn.play(station_name.clone(), station_url.clone()).await {
+                    spinner.error("Failed to play station");
+                    eprintln!("Error: Failed to play station: {}", e);
+                    return Err(e);
+                }
+                
+                // Wait until the station is actually playing
+                let mut attempts = 0;
+                let max_attempts = 50; // 10 seconds max (50 * 200ms)
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                    
+                    match conn.get_status().await {
+                        Ok(status) => {
+                            use radm::player::PlayerState;
+                            match status.state {
+                                PlayerState::Playing => {
+                                    // Stream is loaded and playing!
+                                    break;
+                                }
+                                PlayerState::Error => {
+                                    spinner.error("Failed to load station");
+                                    if let Some(err_msg) = status.error_message {
+                                        eprintln!("Error: {}", err_msg);
+                                    }
+                                    return Err(anyhow::anyhow!("Station failed to load"));
+                                }
+                                PlayerState::Loading => {
+                                    // Still loading, continue waiting
+                                }
+                                _ => {
+                                    // Unexpected state, but continue waiting
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to get status while waiting: {}", e);
+                        }
+                    }
+                    
+                    attempts += 1;
+                    if attempts >= max_attempts {
+                        spinner.error("Timed out waiting for station to load");
+                        return Err(anyhow::anyhow!("Station took too long to load"));
+                    }
+                }
+                
+                // Explicitly drop the connection before saving config
+                drop(conn);
+                
+                // Save as last played
+                let data_dir = get_data_dir()?;
+                let mut config = radm::config::Config::load(&data_dir)?;
+                config.update_session_state(config.default_volume, Some(station_name.clone()), Some(station_url));
+                if let Err(e) = config.save(&data_dir) {
+                    tracing::warn!("Failed to save config: {}", e);
+                }
+                
+                // Show final message with spinner stop
+                spinner.stop(format!("Playing {}", station_name));
+                println!(); // Empty line at the end
+                return Ok(());
+            }
+            Some(SearchAction::NextPage) => {
+                // Go to next page
+                query.offset += query.limit;
+                continue;
+            }
+            Some(SearchAction::PrevPage) => {
+                // Go to previous page
+                query.offset = query.offset.saturating_sub(query.limit);
+                continue;
+            }
+            None => {
+                cliclack::outro("Search cancelled")?;
+                println!(); // Empty line at the end
+                return Ok(());
+            }
+        }
     }
-    
-    // Load favorites for display
-    let data_dir = get_data_dir()?;
-    let favorites = krofm::FavoritesManager::new(&data_dir)?;
-    
-    // Display results
-    println!("{}", search::format_station_list(
-        &results,
-        0,
-        &favorites,
-        terminal_width as usize,
-        query.offset,
-    ));
-    
-    // Show pagination info
-    let total_shown = query.offset + results.len();
-    println!("\n(Showing results {}-{})", query.offset + 1, total_shown);
-    
-    if results.len() >= query.limit {
-        println!("Use --skip {} to fetch next page", query.offset + query.limit);
-    }
-    
-    Ok(())
 }
 
 /// Run interactive search mode with sequential filter prompts
-async fn run_interactive_search(_daemon_conn: &krofm::PlayerDaemonConnection, data_dir: &std::path::PathBuf) -> Result<()> {
-    use std::io::Write;
+async fn run_interactive_search(data_dir: &std::path::PathBuf) -> Result<()> {
+    use cliclack::{input, intro, outro, confirm};
     
-    let mut query = krofm::search::SearchQuery::default();
-    let (terminal_width, _) = terminal::size().unwrap_or((120, 30));
+    intro("Interactive Radio Search")?;
     
-    println!("\n=== Interactive Search ===\n");
+    let mut query = radm::search::SearchQuery::default();
     
-    // Simple filter input
-    print!("Name (press Enter to skip): ");
-    std::io::stdout().flush()?;
-    let mut name_input = String::new();
-    std::io::stdin().read_line(&mut name_input)?;
-    let name_input = name_input.trim();
+    // Get search filters from user in specified order: name, language, country, tags, offset, and the rest
+    
+    // 1. Name
+    let name_input: String = input("Station name")
+        .default_input("")
+        .interact()?;
     if !name_input.is_empty() {
-        query.name = Some(name_input.to_string());
+        query.name = Some(name_input);
     }
     
-    print!("Country (press Enter to skip): ");
-    std::io::stdout().flush()?;
-    let mut country_input = String::new();
-    std::io::stdin().read_line(&mut country_input)?;
-    let country_input = country_input.trim();
-    if !country_input.is_empty() {
-        query.country = Some(country_input.to_string());
-    }
-    
-    print!("Language (press Enter to skip): ");
-    std::io::stdout().flush()?;
-    let mut language_input = String::new();
-    std::io::stdin().read_line(&mut language_input)?;
-    let language_input = language_input.trim();
+    // 2. Language
+    let language_input: String = input("Language")
+        .default_input("")
+        .interact()?;
     if !language_input.is_empty() {
-        query.language = Some(language_input.to_string());
+        query.language = Some(language_input);
     }
     
-    // Create interactive search session and run
-    let mut interactive = InteractiveSearch::new().await?;
+    // 3. Country
+    let country_input: String = input("Country")
+        .default_input("")
+        .interact()?;
+    if !country_input.is_empty() {
+        query.country = Some(country_input);
+    }
     
-    match interactive.run(query, terminal_width).await? {
-        Some((station_name, station_url)) => {
-            // Play the selected station
-            // Create a new connection (daemon_conn is immutable reference)
-            let daemon_client = krofm::PlayerDaemonClient::new()?;
-            let mut new_conn = daemon_client.connect().await?;
-            
-            if let Err(e) = new_conn.play(station_name.clone(), station_url.clone()).await {
-                eprintln!("Error: Failed to play station: {}", e);
+    // 4. Tags
+    let tags_input: String = input("Tags")
+        .default_input("")
+        .interact()?;
+    if !tags_input.is_empty() {
+        query.tags = Some(vec![tags_input]);
+    }
+    
+    // 5. Offset
+    let offset_input: String = input("Offset")
+        .default_input("0")
+        .interact()?;
+    if let Ok(val) = offset_input.parse::<usize>() {
+        query.offset = val;
+    }
+    
+    // 6. Rest of the filters
+    
+    // Codec
+    let codec_input: String = input("Codec")
+        .default_input("")
+        .interact()?;
+    if !codec_input.is_empty() {
+        query.codec = Some(codec_input);
+    }
+    
+    // State
+    let state_input: String = input("State")
+        .default_input("")
+        .interact()?;
+    if !state_input.is_empty() {
+        query.state = Some(state_input);
+    }
+    
+    // Country code
+    let countrycode_input: String = input("Country code")
+        .default_input("")
+        .interact()?;
+    if !countrycode_input.is_empty() {
+        query.countrycode = Some(countrycode_input);
+    }
+    
+    // Bitrate min
+    let bitrate_min_input: String = input("Minimum bitrate")
+        .default_input("")
+        .interact()?;
+    if !bitrate_min_input.is_empty() {
+        if let Ok(val) = bitrate_min_input.parse::<u32>() {
+            query.bitrate_min = Some(val);
+        }
+    }
+    
+    // Bitrate max
+    let bitrate_max_input: String = input("Maximum bitrate")
+        .default_input("")
+        .interact()?;
+    if !bitrate_max_input.is_empty() {
+        if let Ok(val) = bitrate_max_input.parse::<u32>() {
+            query.bitrate_max = Some(val);
+        }
+    }
+    
+    // Order
+    let order_input: String = input("Order by (e.g., name, votes, clickcount)")
+        .default_input("")
+        .interact()?;
+    if !order_input.is_empty() {
+        query.order = Some(order_input);
+    }
+    
+    // Reverse
+    let reverse_confirm = confirm("Reverse order?")
+        .initial_value(false)
+        .interact()?;
+    if reverse_confirm {
+        query.reverse = Some(true);
+    }
+    
+    // Hide broken
+    let hidebroken_confirm = confirm("Hide broken stations?")
+        .initial_value(true)
+        .interact()?;
+    query.hidebroken = Some(hidebroken_confirm);
+    
+    // HTTPS only
+    let https_confirm = confirm("HTTPS only?")
+        .initial_value(false)
+        .interact()?;
+    if https_confirm {
+        query.is_https = Some(true);
+    }
+    
+    // Pagination loop
+    loop {
+        // Perform search with proper error handling for spinner
+        let spinner = cliclack::spinner();
+        spinner.start("Fetching results...");
+        
+        let results = match async {
+            let mut api_client = radm::api::RadioBrowserClient::new().await?;
+            api_client.advanced_search(&query).await
+        }.await {
+            Ok(results) => {
+                spinner.stop("Results loaded");
+                // Give terminal a moment to settle after spinner stops
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                results
+            }
+            Err(e) => {
+                spinner.error("Failed to fetch results");
+                outro("Search failed")?;
                 return Err(e);
             }
-            
-            // Save as last played
-            let mut config = Config::load(data_dir)?;
-            config.update_session_state(config.default_volume, Some(station_name.clone()), Some(station_url));
-            let _ = config.save(data_dir);
-            
-            println!("Playing: {}", station_name);
+        };
+        
+        if results.is_empty() && query.offset == 0 {
+            println!("No stations found");
+            outro("Search completed")?;
+            return Ok(());
         }
-        None => {
-            println!("Search cancelled");
+        
+        // Interactive selection
+        match run_interactive_search_with_select(results, &query).await? {
+            Some(SearchAction::Play(station_name, station_url)) => {
+                // Show spinner while loading station
+                let spinner = cliclack::spinner();
+                spinner.start(format!("Loading station: {}", station_name));
+                
+                // Play the selected station
+                let daemon_client = radm::PlayerDaemonClient::new()?;
+                let mut new_conn = daemon_client.connect().await?;
+                
+                if let Err(e) = new_conn.play(station_name.clone(), station_url.clone()).await {
+                    spinner.error("Failed to play station");
+                    eprintln!("Error: Failed to play station: {}", e);
+                    return Err(e);
+                }
+                
+                // Wait until the station is actually playing
+                let mut attempts = 0;
+                let max_attempts = 50; // 10 seconds max (50 * 200ms)
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                    
+                    match new_conn.get_status().await {
+                        Ok(status) => {
+                            use radm::player::PlayerState;
+                            match status.state {
+                                PlayerState::Playing => {
+                                    // Stream is loaded and playing!
+                                    break;
+                                }
+                                PlayerState::Error => {
+                                    spinner.error("Failed to load station");
+                                    if let Some(err_msg) = status.error_message {
+                                        eprintln!("Error: {}", err_msg);
+                                    }
+                                    return Err(anyhow::anyhow!("Station failed to load"));
+                                }
+                                PlayerState::Loading => {
+                                    // Still loading, continue waiting
+                                }
+                                _ => {
+                                    // Unexpected state, but continue waiting
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to get status while waiting: {}", e);
+                        }
+                    }
+                    
+                    attempts += 1;
+                    if attempts >= max_attempts {
+                        spinner.error("Timed out waiting for station to load");
+                        return Err(anyhow::anyhow!("Station took too long to load"));
+                    }
+                }
+                
+                // Explicitly drop the connection
+                drop(new_conn);
+                
+                // Save as last played
+                let mut config = Config::load(data_dir)?;
+                config.update_session_state(config.default_volume, Some(station_name.clone()), Some(station_url));
+                if let Err(e) = config.save(data_dir) {
+                    tracing::warn!("Failed to save config: {}", e);
+                }
+                
+                // Show final message with spinner stop
+                spinner.stop(format!("Playing {}", station_name));
+                println!(); // Empty line at the end
+                return Ok(());
+            }
+            Some(SearchAction::NextPage) => {
+                // Go to next page
+                query.offset += query.limit;
+                continue;
+            }
+            Some(SearchAction::PrevPage) => {
+                // Go to previous page
+                query.offset = query.offset.saturating_sub(query.limit);
+                continue;
+            }
+            None => {
+                outro("Search cancelled")?;
+                println!(); // Empty line at the end
+                return Ok(());
+            }
         }
     }
-    
-    Ok(())
 }
 
 fn print_help() {
     println!("\n╭────────────────────────────────────────────────────────────┐");
-    println!("│ Krofm - Radio Player Control                               │");
+    println!("│ Radm - Radio Player Control                                │");
     println!("├────────────────────────────────────────────────────────────┤");
-    println!("│ Usage: krofmc <command> [options]                          │");
+    println!("│ Usage: radc <command> [options]                            │");
     println!("│                                                            │");
     println!("│ Commands:                                                  │");
-    println!("│   status              - Show current player status         │");
-    println!("│   play                - Resume playback                    │");
-    println!("│   play-url <n> <url>  - Play station and save as last      │");
-    println!("│   pause               - Pause playback                     │");
-    println!("│   resume              - Resume playback                    │");
-    println!("│   stop                - Stop playback                      │");
+     println!("│   info                - Show current player status         │");
+     println!("│   pause               - Pause playback                     │");
+     println!("│   start               - Start playback                     │");
+     println!("│   zap                 - Stop playback (kill daemon)         │");
     println!("│   volume <0-100>      - Set volume (0-100%)                │");
     println!("│   volume --up [amt]   - Increase volume (default 10%)      │");
     println!("│   volume --down [amt] - Decrease volume (default 10%)      │");
     println!("│ Search:                                                    │");
-    println!("│   search              - Interactive mode with prompts      │");
-    println!("│   search <query>      - Direct search (e.g., jazz)         │");
-    println!("│   search --country X  - Filter by country/language/codec   │");
-    println!("│   search --limit 20   - Set result limit (default: 100)    │");
-    println!("│   search --skip N     - Paginate results (N results)       │");
+    println!("│   find                - Interactive mode with prompts      │");
+    println!("│   find <query>        - Direct search (e.g., jazz)         │");
+    println!("│   find --country X    - Filter by country/language/codec   │");
+    println!("│   find --limit 20     - Set result limit (default: 100)    │");
+    println!("│   find --skip N       - Paginate results (N results)       │");
     println!("│ Other:                                                     │");
     println!("│   quit/exit           - Exit CLI                           │");
     println!("│   help                - Show this help message             │");

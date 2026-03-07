@@ -36,7 +36,7 @@ impl Default for SearchQuery {
             reverse: Some(true),
             hidebroken: Some(true),
             is_https: None,
-            limit: 100,
+            limit: 12,
             offset: 0,
         }
     }
@@ -47,17 +47,17 @@ impl SearchQuery {
     pub fn next_page(&mut self) {
         self.offset += self.limit;
     }
-    
+
     /// Move to previous page
     pub fn prev_page(&mut self) {
         self.offset = self.offset.saturating_sub(self.limit);
     }
-    
+
     /// Get current page number (1-indexed)
     pub fn current_page(&self) -> usize {
         (self.offset / self.limit) + 1
     }
-    
+
     /// Reset to first page
     pub fn reset_pagination(&mut self) {
         self.offset = 0;
@@ -68,7 +68,11 @@ impl SearchQuery {
 pub enum ParseError {
     UnknownField(String),
     InvalidSyntax(String),
-    InvalidValue { field: String, value: String, reason: String },
+    InvalidValue {
+        field: String,
+        value: String,
+        reason: String,
+    },
     MissingEquals(String),
 }
 
@@ -77,8 +81,16 @@ impl fmt::Display for ParseError {
         match self {
             ParseError::UnknownField(field) => write!(f, "Unknown field: '{}'", field),
             ParseError::InvalidSyntax(msg) => write!(f, "Invalid syntax: {}", msg),
-            ParseError::InvalidValue { field, value, reason } => {
-                write!(f, "Invalid value '{}' for field '{}': {}", value, field, reason)
+            ParseError::InvalidValue {
+                field,
+                value,
+                reason,
+            } => {
+                write!(
+                    f,
+                    "Invalid value '{}' for field '{}': {}",
+                    value, field, reason
+                )
             }
             ParseError::MissingEquals(field) => {
                 write!(f, "Missing '=' after field '{}'", field)
@@ -109,7 +121,12 @@ const VALID_FIELDS: &[&str] = &[
 
 /// Valid order field values
 const VALID_ORDER_VALUES: &[&str] = &[
-    "name", "votes", "clickcount", "bitrate", "changetimestamp", "random",
+    "name",
+    "votes",
+    "clickcount",
+    "bitrate",
+    "changetimestamp",
+    "random",
 ];
 
 /// Validate a field name
@@ -135,14 +152,13 @@ pub fn is_default_query(query: &SearchQuery) -> bool {
         && query.hidebroken == default.hidebroken
 }
 
-
 /// Tokenize input respecting quoted strings
 fn tokenize_query(input: &str) -> Vec<String> {
     let mut tokens = Vec::new();
     let mut current_token = String::new();
     let mut in_quotes = false;
     let mut chars = input.chars().peekable();
-    
+
     while let Some(ch) = chars.next() {
         match ch {
             '"' => {
@@ -160,11 +176,11 @@ fn tokenize_query(input: &str) -> Vec<String> {
             }
         }
     }
-    
+
     if !current_token.is_empty() {
         tokens.push(current_token);
     }
-    
+
     tokens
 }
 
@@ -173,33 +189,33 @@ fn tokenize_query(input: &str) -> Vec<String> {
 /// Values with spaces should be quoted: field="value with spaces"
 pub fn parse_query(input: &str) -> Result<SearchQuery, ParseError> {
     let input = input.trim();
-    
+
     // Empty string returns default query
     if input.is_empty() {
         return Ok(SearchQuery::default());
     }
-    
+
     let mut query = SearchQuery::default();
-    
+
     // Split by spaces to get field=value pairs, respecting quotes
     let pairs = tokenize_query(input);
-    
+
     for pair in pairs {
         // Split by '=' to get field and value
         let parts: Vec<&str> = pair.splitn(2, '=').collect();
-        
+
         if parts.len() != 2 {
             return Err(ParseError::MissingEquals(parts[0].to_string()));
         }
-        
+
         let field = parts[0].trim().to_lowercase();
         let value = parts[1].trim();
-        
+
         // Validate field name
         if !validate_field(&field) {
             return Err(ParseError::UnknownField(field));
         }
-        
+
         // Parse based on field type
         match field.as_str() {
             "name" => {
@@ -217,7 +233,8 @@ pub fn parse_query(input: &str) -> Result<SearchQuery, ParseError> {
                     return Err(ParseError::InvalidValue {
                         field: "country".to_string(),
                         value: value.to_string(),
-                        reason: "multiple countries not supported (use single country only)".to_string(),
+                        reason: "multiple countries not supported (use single country only)"
+                            .to_string(),
                     });
                 }
                 query.country = Some(value.trim().to_string());
@@ -247,13 +264,15 @@ pub fn parse_query(input: &str) -> Result<SearchQuery, ParseError> {
                     return Err(ParseError::InvalidValue {
                         field: "language".to_string(),
                         value: value.to_string(),
-                        reason: "multiple languages not supported (use single language only)".to_string(),
+                        reason: "multiple languages not supported (use single language only)"
+                            .to_string(),
                     });
                 }
                 query.language = Some(value.trim().to_string());
             }
             "tag" => {
-                let tags: Vec<String> = value.split(',')
+                let tags: Vec<String> = value
+                    .split(',')
                     .map(|s| s.trim().to_string())
                     .filter(|s| !s.is_empty())
                     .collect();
@@ -301,11 +320,13 @@ pub fn parse_query(input: &str) -> Result<SearchQuery, ParseError> {
                 match reverse_value.as_str() {
                     "true" => query.reverse = Some(true),
                     "false" => query.reverse = Some(false),
-                    _ => return Err(ParseError::InvalidValue {
-                        field: "reverse".to_string(),
-                        value: value.to_string(),
-                        reason: "must be 'true' or 'false'".to_string(),
-                    }),
+                    _ => {
+                        return Err(ParseError::InvalidValue {
+                            field: "reverse".to_string(),
+                            value: value.to_string(),
+                            reason: "must be 'true' or 'false'".to_string(),
+                        })
+                    }
                 }
             }
             "hidebroken" => {
@@ -313,11 +334,13 @@ pub fn parse_query(input: &str) -> Result<SearchQuery, ParseError> {
                 match hidebroken_value.as_str() {
                     "true" => query.hidebroken = Some(true),
                     "false" => query.hidebroken = Some(false),
-                    _ => return Err(ParseError::InvalidValue {
-                        field: "hidebroken".to_string(),
-                        value: value.to_string(),
-                        reason: "must be 'true' or 'false'".to_string(),
-                    }),
+                    _ => {
+                        return Err(ParseError::InvalidValue {
+                            field: "hidebroken".to_string(),
+                            value: value.to_string(),
+                            reason: "must be 'true' or 'false'".to_string(),
+                        })
+                    }
                 }
             }
             "is_https" => {
@@ -325,11 +348,13 @@ pub fn parse_query(input: &str) -> Result<SearchQuery, ParseError> {
                 match is_https_value.as_str() {
                     "true" => query.is_https = Some(true),
                     "false" => query.is_https = Some(false),
-                    _ => return Err(ParseError::InvalidValue {
-                        field: "is_https".to_string(),
-                        value: value.to_string(),
-                        reason: "must be 'true' or 'false'".to_string(),
-                    }),
+                    _ => {
+                        return Err(ParseError::InvalidValue {
+                            field: "is_https".to_string(),
+                            value: value.to_string(),
+                            reason: "must be 'true' or 'false'".to_string(),
+                        })
+                    }
                 }
             }
             "page" => {
@@ -338,24 +363,26 @@ pub fn parse_query(input: &str) -> Result<SearchQuery, ParseError> {
                         // Convert page number (1-indexed) to offset
                         query.offset = (page_num - 1) * query.limit;
                     }
-                    _ => return Err(ParseError::InvalidValue {
-                        field: "page".to_string(),
-                        value: value.to_string(),
-                        reason: "must be a positive integer".to_string(),
-                    }),
+                    _ => {
+                        return Err(ParseError::InvalidValue {
+                            field: "page".to_string(),
+                            value: value.to_string(),
+                            reason: "must be a positive integer".to_string(),
+                        })
+                    }
                 }
             }
             _ => unreachable!(), // Already validated field name
         }
     }
-    
+
     Ok(query)
 }
 
 /// Format a SearchQuery back to a query string
 pub fn format_query(query: &SearchQuery) -> String {
     let mut parts = Vec::new();
-    
+
     if let Some(name) = &query.name {
         parts.push(format!("name={}", name));
     }
@@ -404,108 +431,111 @@ pub fn format_query(query: &SearchQuery) -> String {
     if let Some(is_https) = query.is_https {
         parts.push(format!("is_https={}", is_https));
     }
-    
+
     parts.join(" ")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_parse_empty_query() {
         let query = parse_query("").unwrap();
         assert!(is_default_query(&query));
     }
-    
+
     #[test]
     fn test_parse_simple_query() {
         let query = parse_query("country=france").unwrap();
         assert_eq!(query.country, Some(vec!["france".to_string()]));
     }
-    
+
     #[test]
     fn test_parse_multiple_values() {
         let query = parse_query("country=france,germany").unwrap();
-        assert_eq!(query.country, Some(vec!["france".to_string(), "germany".to_string()]));
+        assert_eq!(
+            query.country,
+            Some(vec!["france".to_string(), "germany".to_string()])
+        );
     }
-    
+
     #[test]
     fn test_parse_multiple_fields() {
         let query = parse_query("country=france tag=jazz").unwrap();
         assert_eq!(query.country, Some(vec!["france".to_string()]));
         assert_eq!(query.tags, Some(vec!["jazz".to_string()]));
     }
-    
+
     #[test]
     fn test_parse_numeric_field() {
         let query = parse_query("bitrate_min=128").unwrap();
         assert_eq!(query.bitrate_min, Some(128));
     }
-    
+
     #[test]
     fn test_parse_boolean_field() {
         let query = parse_query("hidebroken=true").unwrap();
         assert_eq!(query.hidebroken, Some(true));
-        
+
         let query = parse_query("hidebroken=false").unwrap();
         assert_eq!(query.hidebroken, Some(false));
     }
-    
+
     #[test]
     fn test_invalid_field() {
         let result = parse_query("countrx=france");
         assert!(matches!(result, Err(ParseError::UnknownField(_))));
     }
-    
+
     #[test]
     fn test_missing_equals() {
         let result = parse_query("country france");
         assert!(matches!(result, Err(ParseError::MissingEquals(_))));
     }
-    
+
     #[test]
     fn test_invalid_boolean() {
         let result = parse_query("hidebroken=yes");
         assert!(matches!(result, Err(ParseError::InvalidValue { .. })));
     }
-    
+
     #[test]
     fn test_invalid_number() {
         let result = parse_query("bitrate_min=abc");
         assert!(matches!(result, Err(ParseError::InvalidValue { .. })));
     }
-    
+
     #[test]
     fn test_format_query() {
         let mut query = SearchQuery::default();
         query.country = Some(vec!["france".to_string()]);
         query.tags = Some(vec!["jazz".to_string()]);
-        
+
         let formatted = format_query(&query);
         assert!(formatted.contains("country=france"));
         assert!(formatted.contains("tag=jazz"));
     }
-    
+
     #[test]
     fn test_is_default_query() {
         let query = SearchQuery::default();
         assert!(is_default_query(&query));
-        
+
         let mut query = SearchQuery::default();
         query.country = Some(vec!["france".to_string()]);
         assert!(!is_default_query(&query));
     }
-    
+
     #[test]
     fn test_pagination() {
         let mut query = SearchQuery::default();
         assert_eq!(query.current_page(), 1);
-        
+
         query.next_page();
         assert_eq!(query.current_page(), 2);
         assert_eq!(query.offset, 100);
-        
+
         query.prev_page();
         assert_eq!(query.current_page(), 1);
         assert_eq!(query.offset, 0);

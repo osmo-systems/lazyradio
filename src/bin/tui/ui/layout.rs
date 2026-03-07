@@ -7,7 +7,7 @@ use ratatui::{
 };
 
 use crate::app::{App, Tab};
-use krofm::PlayerState;
+use radm::PlayerState;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
@@ -276,7 +276,7 @@ fn draw_player(f: &mut Frame, app: &App, area: Rect) {
 
     // Shorter volume bar (10 chars instead of 20)
     let volume_bar = {
-        let filled = (info.volume * 10.0) as usize;
+        let filled = ((info.volume * 10.0).round()) as usize;
         let empty = 10 - filled;
         format!("{}{}", "█".repeat(filled), "░".repeat(empty))
     };
@@ -297,7 +297,7 @@ fn draw_player(f: &mut Frame, app: &App, area: Rect) {
 
     // Calculate spacing for state and volume to be on the same line
     // We want: "[Icon] State" on left, "Vol: [bar] XX%" on right
-    let volume_text = format!("Vol: {} {}%", volume_bar, (info.volume * 100.0) as u8);
+    let volume_text = format!("Vol: {} {:.0}%", volume_bar, (info.volume * 100.0).round());
     let state_text_len = icon.len() + 1 + state_name.len(); // icon + space + state name
     let volume_text_len = volume_text.len();
     let available_width = area.width.saturating_sub(4) as usize; // Account for borders and padding
@@ -328,7 +328,7 @@ fn draw_player(f: &mut Frame, app: &App, area: Rect) {
             Span::raw(" ".repeat(spacing)),
             Span::styled("Vol: ", Style::default().fg(Color::Cyan)),
             Span::styled(&volume_bar, Style::default().fg(Color::Cyan)),
-            Span::raw(format!(" {}%", (info.volume * 100.0) as u8)),
+            Span::raw(format!(" {:.0}%", (info.volume * 100.0).round())),
         ]),
         Line::from(""), // Empty line for spacing
     ];
@@ -408,7 +408,7 @@ fn draw_status_bar(f: &mut Frame, _app: &App, area: Rect) {
     // Version info on the right
     let version = env!("CARGO_PKG_VERSION");
     let version_line = Line::from(vec![
-        Span::styled("krofm ", text_style),
+        Span::styled("radm ", text_style),
         Span::styled(version, key_style),
     ]);
 
