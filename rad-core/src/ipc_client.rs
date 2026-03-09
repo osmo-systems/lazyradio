@@ -1,5 +1,5 @@
 //! IPC Client for Player Daemon
-//! 
+//!
 //! Provides a client interface for TUI/CLI applications to communicate with
 //! the headless player daemon via Unix socket.
 
@@ -17,7 +17,7 @@ use crate::ipc::{ClientMessage, DaemonMessage};
 use crate::player::PlayerInfo;
 
 const DAEMON_SOCKET: &str = ".radm-player.sock";
-const DAEMON_BINARY: &str = "rad-daemon";
+const DAEMON_BINARY: &str = "_rad-daemon";
 
 /// Client for communicating with the player daemon
 pub struct PlayerDaemonClient {
@@ -42,7 +42,7 @@ impl PlayerDaemonClient {
 
         // Daemon not running, try to start it
         info!("Player daemon not running, attempting to start it...");
-        
+
         // Remove stale socket file if it exists
         if self.socket_path.exists() {
             info!("Removing stale socket file: {}", self.socket_path.display());
@@ -50,13 +50,13 @@ impl PlayerDaemonClient {
                 tracing::warn!("Failed to remove stale socket file: {}", e);
             }
         }
-        
+
         self.start_daemon().await?;
 
         // Wait for daemon to be ready
         for attempt in 0..10 {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            
+
             if let Ok(stream) = UnixStream::connect(&self.socket_path).await {
                 info!("Connected to newly started player daemon");
                 return Ok(PlayerDaemonConnection::new(stream).await?);
@@ -79,25 +79,26 @@ impl PlayerDaemonClient {
         let exe_dir = current_exe
             .parent()
             .ok_or_else(|| anyhow::anyhow!("Failed to determine executable directory"))?;
-        
+
         let daemon_path = exe_dir.join(DAEMON_BINARY);
-        
+
         info!("Current executable: {}", current_exe.display());
         info!("Executable directory: {}", exe_dir.display());
         info!("Attempting to start daemon from: {}", daemon_path.display());
-        
+
         // First try the full path
         if daemon_path.exists() {
             info!("Found daemon at: {}", daemon_path.display());
-            Command::new(&daemon_path)
-                .spawn()
-                .context(format!("Failed to start player daemon from {}", daemon_path.display()))?;
+            Command::new(&daemon_path).spawn().context(format!(
+                "Failed to start player daemon from {}",
+                daemon_path.display()
+            ))?;
             info!("Spawned player daemon from: {}", daemon_path.display());
             return Ok(());
         }
-        
+
         info!("Daemon not found at {}, trying PATH", daemon_path.display());
-        
+
         // Fallback: try from PATH
         Command::new(DAEMON_BINARY)
             .spawn()
@@ -132,7 +133,7 @@ impl PlayerDaemonConnection {
     /// Send a command and wait for response
     pub async fn send_command(&mut self, msg: ClientMessage) -> Result<DaemonMessage> {
         let json = serde_json::to_string(&msg)?;
-        
+
         // Write command
         {
             let mut writer = self.writer.lock().await;
@@ -162,10 +163,7 @@ impl PlayerDaemonConnection {
 
     /// Play a station
     pub async fn play(&mut self, station_name: String, url: String) -> Result<()> {
-        let msg = ClientMessage::Play {
-            station_name,
-            url,
-        };
+        let msg = ClientMessage::Play { station_name, url };
         self.send_command(msg).await?;
         Ok(())
     }
