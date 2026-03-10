@@ -4,8 +4,9 @@ use std::path::PathBuf;
 
 use rad_core::{
     RadioBrowserClient, Station, Config, PlayerInfo,
+    StartupTab,
     search::{AutocompleteData, SearchQuery, format_query, is_default_query},
-    storage::{CacheManager, FavoritesManager, HistoryManager, SearchHistoryManager},
+    storage::{CacheManager, FavoritesManager, HistoryManager, SearchHistoryManager, VoteManager},
     PlayerState, PlayerDaemonConnection,
 };
 use crate::ui::SearchPopup;
@@ -15,6 +16,12 @@ pub enum Tab {
     Browse,
     Favorites,
     History,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum HelpTab {
+    Keys,
+    Settings,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -57,6 +64,7 @@ pub struct App {
     pub history: HistoryManager,
     pub cache: CacheManager,
     pub search_history: SearchHistoryManager,
+    pub vote_manager: VoteManager,
     pub config: Config,
     pub data_dir: PathBuf,
     
@@ -74,6 +82,8 @@ pub struct App {
     
     // Help popup
     pub help_popup: bool,
+    pub help_tab: HelpTab,
+    pub settings_selected: usize,
     
     // Lists for browse modes
     pub countries: Vec<String>,
@@ -104,6 +114,7 @@ impl App {
         let history = HistoryManager::new(&data_dir, config.max_history_entries)?;
         let cache = CacheManager::new(&data_dir, config.cache_duration_secs)?;
         let search_history = SearchHistoryManager::new(&data_dir)?;
+        let vote_manager = VoteManager::new(&data_dir)?;
         
         // Restore session state from config
         let restored_volume = config.last_volume.unwrap_or(config.default_volume);
@@ -119,12 +130,20 @@ impl App {
         let autocomplete_data = AutocompleteData::load(&mut api_client).await
             .unwrap_or_default(); // Use default if loading fails
 
-        // Start with default query (popular stations)
-        let current_query = SearchQuery::default();
+        // Build initial query applying config defaults
+        let mut current_query = SearchQuery::default();
+        current_query.order = Some(config.default_search_order.as_api_str().to_string());
+
+        // Determine startup tab
+        let startup_tab = match config.startup_tab {
+            StartupTab::Search => Tab::Browse,
+            StartupTab::Favorites => Tab::Favorites,
+            StartupTab::History => Tab::History,
+        };
 
         let app = Self {
             running: true,
-            current_tab: Tab::Browse,
+            current_tab: startup_tab,
             browse_mode: BrowseMode::Popular,
             
             stations: Vec::new(),
@@ -148,6 +167,7 @@ impl App {
             history,
             cache,
             search_history,
+            vote_manager,
             config,
             data_dir,
             
@@ -159,6 +179,8 @@ impl App {
             error_popup: None,
             warning_popup: None,
             help_popup: false,
+            help_tab: HelpTab::Keys,
+            settings_selected: 0,
             
             countries: Vec::new(),
             genres: Vec::new(),
@@ -697,12 +719,50 @@ impl App {
         if let Some(station) = self.get_selected_station() {
             let uuid = station.station_uuid.clone();
             let name = station.name.clone();
+
+            if self.vote_manager.has_voted_recently(&uuid) {
+                self.add_log(format!("Already voted for {} (24h cooldown)", name));
+                return Ok(());
+            }
+
             match self.api_client.vote_for_station(&uuid).await {
                 Ok(_) => {
-                    self.status_message = Some(format!("Voted for: {}", name));
+                    let _ = self.vote_manager.record_vote(&uuid);
+                    self.add_log(format!("Voted for: {}", name));
                 }
                 Err(e) => {
-                    self.status_message = Some(format!("Failed to vote: {}", e));
+                    self.add_log(format!("Failed to vote for {}: {}", name, e));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Vote for all favorite stations that haven't been voted for in the last 24h.
+    pub async fn auto_vote_favorites(&mut self) -> Result<()> {
+        if !self.config.auto_vote_favorites {
+            return Ok(());
+        }
+
+        let _ = self.vote_manager.cleanup_expired();
+
+        let uuids: Vec<(String, String)> = self
+            .favorites
+            .get_all()
+            .iter()
+            .map(|f| (f.uuid.clone(), f.name.clone()))
+            .collect();
+
+        for (uuid, name) in uuids {
+            if !self.vote_manager.has_voted_recently(&uuid) {
+                match self.api_client.vote_for_station(&uuid).await {
+                    Ok(_) => {
+                        let _ = self.vote_manager.record_vote(&uuid);
+                        self.add_log(format!("Auto-voted for favorite: {}", name));
+                    }
+                    Err(e) => {
+                        tracing::warn!("Auto-vote failed for {}: {}", name, e);
+                    }
                 }
             }
         }

@@ -2,14 +2,22 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
     Frame,
 };
 
-use crate::app::{App, Tab};
+use tui_kit::{
+    block::{panel_block, popup_block, widget_title},
+    popup::centered_popup,
+    tabs::tab_line,
+    Theme,
+};
+
+use crate::app::{App, HelpTab, Tab};
 use rad_core::PlayerState;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
+    let theme = Theme::default();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -19,87 +27,86 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         ])
         .split(f.area());
 
-    draw_player_and_log(f, app, chunks[0]);
-    draw_main_content(f, app, chunks[1]);
-    draw_status_bar(f, app, chunks[2]);
+    draw_player_and_log(f, app, chunks[0], &theme);
+    draw_main_content(f, app, chunks[1], &theme);
+    draw_status_bar(f, app, chunks[2], &theme);
 
     // Draw popups on top of everything
     if app.help_popup {
-        draw_help_popup(f);
+        draw_help_popup(f, app, &theme);
     }
 
     // Draw search popup
     if let Some(ref popup) = app.search_popup {
-        popup.render(f, f.area());
+        popup.render(f, f.area(), &theme);
     }
 
     // Draw error popup on top of everything if present
     if app.error_popup.is_some() {
-        draw_error_popup(f, app);
+        draw_error_popup(f, app, &theme);
     }
 
     // Draw warning popup on top of everything if present
     if app.warning_popup.is_some() {
-        draw_warning_popup(f, app);
+        draw_warning_popup(f, app, &theme);
     }
 }
 
-fn draw_main_content(f: &mut Frame, app: &mut App, area: Rect) {
+fn draw_main_content(f: &mut Frame, app: &mut App, area: Rect, theme: &Theme) {
     // Build tab titles
-    let tab_title = Line::from(vec![
-        Span::styled(
-            "Browse",
-            if matches!(app.current_tab, Tab::Browse) {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::White)
-            },
-        ),
-        Span::raw("  "),
-        Span::styled(
-            "Favorites",
-            if matches!(app.current_tab, Tab::Favorites) {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::White)
-            },
-        ),
-        Span::raw("  "),
-        Span::styled(
-            "History",
-            if matches!(app.current_tab, Tab::History) {
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(Color::White)
-            },
-        ),
-    ]);
+    let tab_title = tab_line(
+        &[
+            ("Browse", matches!(app.current_tab, Tab::Browse)),
+            ("Favorites", matches!(app.current_tab, Tab::Favorites)),
+            ("History", matches!(app.current_tab, Tab::History)),
+        ],
+        theme,
+    );
 
     // All tabs just show station lists now
-    draw_station_list(f, app, area, tab_title);
+    draw_station_list(f, app, area, tab_title, theme);
 }
 
-fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line) {
+fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line, theme: &Theme) {
     // Calculate visible stations count (area height minus borders and padding)
     // Each station takes 1 line, borders take 2 lines
     let visible_count = (area.height.saturating_sub(2)) as usize;
-    app.visible_stations_count = visible_count.max(1);
+    let visible_count = visible_count.max(1);
+    app.visible_stations_count = visible_count;
+
+    // Keep the query limit in sync with the available rows.  On terminal resize this
+    // triggers a re-fetch so the list always fills the screen exactly.
+    if visible_count != app.current_query.limit {
+        app.current_query.limit = visible_count;
+        app.pages_cache.clear();
+        app.pending_search = true;
+    }
+
+    // Station list loses focus when any popup is open
+    let has_popup = app.help_popup
+        || app.search_popup.is_some()
+        || app.error_popup.is_some()
+        || app.warning_popup.is_some();
+    let border_style = if has_popup {
+        theme.border_unfocused
+    } else {
+        theme.border_focused
+    };
 
     if app.stations.is_empty() {
         let text = if app.loading {
             "Loading stations..."
         } else {
-            "No stations loaded.\n\nPress / to search for stations\nPress F1 to load popular stations"
+            "No stations found."
         };
 
         let paragraph = Paragraph::new(text)
-            .block(Block::default().borders(Borders::ALL).title(title))
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title(title)
+                    .border_style(border_style),
+            )
             .alignment(Alignment::Center)
             .wrap(Wrap { trim: true });
 
@@ -116,11 +123,11 @@ fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line) {
             let status_marker = if station.is_online() { "●" } else { "○" };
 
             let is_selected = i == app.selected_index;
+            let is_voted = app.vote_manager.has_voted_recently(&station.station_uuid);
             let base_style = if is_selected {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD)
+                theme.selection
+            } else if is_voted {
+                Style::default().fg(Color::LightGreen)
             } else {
                 Style::default().fg(Color::White)
             };
@@ -180,15 +187,16 @@ fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line) {
             .borders(Borders::ALL)
             .title(full_title)
             .title(
-                ratatui::widgets::block::Title::from(Span::styled(
-                    page_info,
-                    Style::default().fg(Color::Yellow),
-                ))
-                .alignment(Alignment::Right)
-                .position(ratatui::widgets::block::Position::Top),
+                ratatui::widgets::block::Title::from(Span::styled(page_info, border_style))
+                    .alignment(Alignment::Right)
+                    .position(ratatui::widgets::block::Position::Top),
             )
+            .border_style(border_style)
     } else {
-        Block::default().borders(Borders::ALL).title(full_title)
+        Block::default()
+            .borders(Borders::ALL)
+            .title(full_title)
+            .border_style(border_style)
     };
 
     let list = List::new(list_items).block(block);
@@ -199,20 +207,21 @@ fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line) {
     f.render_stateful_widget(list, area, &mut state);
 }
 
-fn draw_player_and_log(f: &mut Frame, app: &App, area: Rect) {
+fn draw_player_and_log(f: &mut Frame, app: &App, area: Rect, theme: &Theme) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(area);
 
-    draw_player(f, app, chunks[0]);
-    draw_status_log(f, app, chunks[1]);
+    draw_player(f, app, chunks[0], theme);
+    draw_status_log(f, app, chunks[1], theme);
 }
 
-fn draw_status_log(f: &mut Frame, app: &App, area: Rect) {
+fn draw_status_log(f: &mut Frame, app: &App, area: Rect, theme: &Theme) {
     if app.status_log.is_empty() {
+        let title = widget_title("Status Log", None, false, theme);
         let paragraph = Paragraph::new("No status messages yet")
-            .block(Block::default().borders(Borders::ALL).title("Status Log"))
+            .block(panel_block(title, false, theme))
             .alignment(Alignment::Center)
             .style(Style::default().fg(Color::DarkGray));
         f.render_widget(paragraph, area);
@@ -226,8 +235,8 @@ fn draw_status_log(f: &mut Frame, app: &App, area: Rect) {
         .map(|msg| ListItem::new(msg.as_str()).style(Style::default().fg(Color::White)))
         .collect();
 
-    let list =
-        List::new(list_items).block(Block::default().borders(Borders::ALL).title("Status Log"));
+    let title = widget_title("Status Log", None, false, theme);
+    let list = List::new(list_items).block(panel_block(title, false, theme));
 
     let mut state = ListState::default();
     state.select(Some(app.status_log_scroll));
@@ -252,7 +261,7 @@ fn get_player_icon(state: PlayerState, frame: usize) -> &'static str {
     }
 }
 
-fn draw_player(f: &mut Frame, app: &App, area: Rect) {
+fn draw_player(f: &mut Frame, app: &App, area: Rect, theme: &Theme) {
     let info = &app.player_info;
 
     // Get animated icon based on state
@@ -297,7 +306,7 @@ fn draw_player(f: &mut Frame, app: &App, area: Rect) {
 
     // Calculate spacing for state and volume to be on the same line
     // We want: "[Icon] State" on left, "Vol: [bar] XX%" on right
-    let volume_text = format!("Vol: {} {:.0}%", volume_bar, (info.volume * 100.0).round());
+    let volume_text = format!("Vol {} {:.0}%", volume_bar, (info.volume * 100.0).round());
     let state_text_len = icon.len() + 1 + state_name.len(); // icon + space + state name
     let volume_text_len = volume_text.len();
     let available_width = area.width.saturating_sub(4) as usize; // Account for borders and padding
@@ -326,98 +335,121 @@ fn draw_player(f: &mut Frame, app: &App, area: Rect) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(" ".repeat(spacing)),
-            Span::styled("Vol: ", Style::default().fg(Color::Cyan)),
+            Span::styled("Vol ", Style::default().fg(Color::Cyan)),
             Span::styled(&volume_bar, Style::default().fg(Color::Cyan)),
             Span::raw(format!(" {:.0}%", (info.volume * 100.0).round())),
         ]),
         Line::from(""), // Empty line for spacing
     ];
 
+    let title = widget_title("Now Playing", None, false, theme);
+    let block = panel_block(title, false, theme);
+
     let paragraph = Paragraph::new(lines)
-        .block(Block::default().borders(Borders::ALL).title("Now Playing"))
+        .block(block)
         .alignment(Alignment::Center);
 
     f.render_widget(paragraph, area);
 }
 
-fn draw_status_bar(f: &mut Frame, _app: &App, area: Rect) {
+fn draw_status_bar(f: &mut Frame, app: &App, area: Rect, theme: &Theme) {
     // Add horizontal margin to align with bordered widgets
     let margin_chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Length(1), // Left margin
-            Constraint::Min(0),    // Content
-            Constraint::Length(1), // Right margin
+            Constraint::Length(1),
+            Constraint::Min(0),
+            Constraint::Length(1),
         ])
         .split(area);
 
     let content_area = margin_chunks[1];
 
-    // Split content area into left (shortcuts) and right (version)
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Min(0),     // Shortcuts (takes remaining space)
-            Constraint::Length(20), // Version info
-        ])
+        .constraints([Constraint::Min(0), Constraint::Length(20)])
         .split(content_area);
 
-    // Main shortcuts - compact single line with light blue
-    let text_style = Style::default().fg(Color::Cyan);
-    let key_style = Style::default().fg(Color::LightCyan);
+    // Build contextual shortcuts depending on the active UI layer
+    let mut pairs: Vec<(&str, &str)> = Vec::new();
 
-    let shortcuts_line = Line::from(vec![
-        Span::styled("↑↓", key_style),
-        Span::styled(":Nav", text_style),
-        Span::styled(" | ", text_style),
-        Span::styled("Enter", key_style),
-        Span::styled(":Select Station", text_style),
-        Span::styled(" | ", text_style),
-        Span::styled("Space", key_style),
-        Span::styled(":Pause", text_style),
-        Span::styled(" | ", text_style),
-        Span::styled("S", key_style),
-        Span::styled(":Stop", text_style),
-        Span::styled(" | ", text_style),
-        Span::styled("+-", key_style),
-        Span::styled(":Vol", text_style),
-        Span::styled(" | ", text_style),
-        Span::styled("F", key_style),
-        Span::styled(":Fav", text_style),
-        Span::styled(" | ", text_style),
-        Span::styled("/", key_style),
-        Span::styled(":Search", text_style),
-        Span::styled(" | ", text_style),
-        Span::styled("[]", key_style),
-        Span::styled(":Page", text_style),
-        Span::styled(" | ", text_style),
-        Span::styled("Tab", key_style),
-        Span::styled(":Switch Panel", text_style),
-        Span::styled(" | ", text_style),
-        Span::styled("?", key_style),
-        Span::styled(":Help", text_style),
-        Span::styled(" | ", text_style),
-        Span::styled("Ctrl+C", key_style),
-        Span::styled(":Quit", text_style),
-    ]);
+    if app.error_popup.is_some() {
+        pairs.push(("Esc/Enter", ":Close"));
+        pairs.push(("Ctrl+C", ":Quit"));
+    } else if app.warning_popup.is_some() {
+        pairs.push(("Esc/Enter", ":Close"));
+    } else if app.help_popup {
+        match app.help_tab {
+            HelpTab::Keys => {
+                pairs.push(("Tab", ":Settings"));
+                pairs.push(("Esc/?", ":Close"));
+            }
+            HelpTab::Settings => {
+                pairs.push(("↑↓", ":Navigate"));
+                pairs.push(("←→/Enter", ":Change"));
+                pairs.push(("Tab", ":Keys"));
+                pairs.push(("Esc", ":Close"));
+            }
+        }
+    } else if app.search_popup.is_some() {
+        pairs.push(("Enter", ":Search"));
+        pairs.push(("Tab", ":Complete"));
+        pairs.push(("↑↓", ":Suggestions"));
+        pairs.push(("Esc", ":Cancel"));
+    } else {
+        // Main screen
+        if app.stations.is_empty() {
+            pairs.push(("/", ":Search"));
+            pairs.push(("F1", ":Popular"));
+        } else {
+            pairs.push(("↑↓", ":Nav"));
+            pairs.push(("Enter", ":Play"));
 
-    let shortcuts = Paragraph::new(shortcuts_line).alignment(Alignment::Left);
+            match app.player_info.state {
+                PlayerState::Playing | PlayerState::Paused => {
+                    pairs.push(("Space", ":Pause"));
+                    pairs.push(("s", ":Stop"));
+                    pairs.push(("r", ":Reload"));
+                }
+                PlayerState::Loading => {
+                    pairs.push(("s", ":Stop"));
+                }
+                _ => {}
+            }
 
+            pairs.push(("+-", ":Vol"));
+            pairs.push(("f", ":Fav"));
+            pairs.push(("/", ":Search"));
+            pairs.push(("[]", ":Page"));
+            pairs.push(("Tab", ":Tabs"));
+        }
+        pairs.push(("?", ":Help"));
+        pairs.push(("Ctrl+C", ":Quit"));
+    }
+
+    let mut spans: Vec<Span> = Vec::new();
+    for (i, (key, desc)) in pairs.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::styled(" | ", theme.hint));
+        }
+        spans.push(Span::styled(*key, theme.shortcut_key));
+        spans.push(Span::styled(*desc, theme.hint));
+    }
+
+    let shortcuts = Paragraph::new(Line::from(spans)).alignment(Alignment::Left);
     f.render_widget(shortcuts, chunks[0]);
 
     // Version info on the right
     let version = env!("CARGO_PKG_VERSION");
     let version_line = Line::from(vec![
-        Span::styled("radm ", text_style),
-        Span::styled(version, key_style),
+        Span::styled("rad ", theme.hint),
+        Span::styled(version, theme.hint),
     ]);
-
     let version_widget = Paragraph::new(version_line).alignment(Alignment::Right);
-
     f.render_widget(version_widget, chunks[1]);
 }
 
-fn draw_error_popup(f: &mut Frame, app: &App) {
+fn draw_error_popup(f: &mut Frame, app: &App, theme: &Theme) {
     if let Some(ref error_msg) = app.error_popup {
         // Calculate popup area (centered, 60% width, auto height based on content)
         let area = f.area();
@@ -429,40 +461,22 @@ fn draw_error_popup(f: &mut Frame, app: &App) {
 
         // Estimate wrapped lines: count characters and divide by content width
         let estimated_lines = (error_msg.len() as f32 / content_width as f32).ceil() as u16;
-        let popup_height = (estimated_lines + 4)
-            .max(6)
-            .min(area.height.saturating_sub(4)); // Min 6, max screen-4
+        let popup_height = (estimated_lines + 2)
+            .max(4)
+            .min(area.height.saturating_sub(4));
 
-        let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-        let popup_y = (area.height.saturating_sub(popup_height)) / 2;
-
-        let popup_area = Rect {
-            x: popup_x,
-            y: popup_y,
-            width: popup_width,
-            height: popup_height,
-        };
-
-        // Clear the background
-        f.render_widget(Clear, popup_area);
+        let popup_area = centered_popup(f, 0.6, 80, popup_height);
 
         // Create the error message with wrapping
-        let error_text = vec![
-            Line::from(Span::raw(error_msg)),
-            Line::from(""),
-            Line::from(Span::styled(
-                "Press Esc/Enter to close, Ctrl+C to quit app",
-                Style::default().fg(Color::Yellow),
-            )),
-        ];
+        let error_text = vec![Line::from(Span::raw(error_msg))];
 
         let paragraph = Paragraph::new(error_text)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Red))
+                    .border_style(theme.border_error)
                     .title(" Error ")
-                    .title_style(Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)),
+                    .title_style(theme.border_error),
             )
             .wrap(Wrap { trim: true })
             .alignment(Alignment::Left);
@@ -471,25 +485,9 @@ fn draw_error_popup(f: &mut Frame, app: &App) {
     }
 }
 
-fn draw_warning_popup(f: &mut Frame, app: &App) {
+fn draw_warning_popup(f: &mut Frame, app: &App, theme: &Theme) {
     if let Some(ref warning_msg) = app.warning_popup {
-        // Calculate popup area (centered, 60% width, auto height)
-        let area = f.area();
-        let popup_width = (area.width as f32 * 0.6).min(80.0) as u16;
-        let popup_height = 10u16; // Fixed height for warning popup
-
-        let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-        let popup_y = (area.height.saturating_sub(popup_height)) / 2;
-
-        let popup_area = Rect {
-            x: popup_x,
-            y: popup_y,
-            width: popup_width,
-            height: popup_height,
-        };
-
-        // Clear the background
-        f.render_widget(Clear, popup_area);
+        let popup_area = centered_popup(f, 0.6, 80, 10);
 
         // Create the warning message with wrapping
         let warning_text = vec![
@@ -501,24 +499,15 @@ fn draw_warning_popup(f: &mut Frame, app: &App) {
             )),
             Line::from(""),
             Line::from(Span::raw(warning_msg)),
-            Line::from(""),
-            Line::from(Span::styled(
-                "Press Esc/Enter to close",
-                Style::default().fg(Color::Gray),
-            )),
         ];
 
         let paragraph = Paragraph::new(warning_text)
             .block(
                 Block::default()
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Yellow))
+                    .border_style(theme.border_warning)
                     .title(" Warning ")
-                    .title_style(
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD),
-                    ),
+                    .title_style(theme.border_warning),
             )
             .wrap(Wrap { trim: true })
             .alignment(Alignment::Left);
@@ -527,34 +516,36 @@ fn draw_warning_popup(f: &mut Frame, app: &App) {
     }
 }
 
-fn draw_help_popup(f: &mut Frame) {
-    // Calculate popup area (centered, 70% width, auto height)
-    let area = f.area();
-    let popup_width = (area.width as f32 * 0.7).min(90.0) as u16;
-    let popup_height = 24u16;
+fn draw_help_popup(f: &mut Frame, app: &App, theme: &Theme) {
+    let popup_area = centered_popup(f, 0.7, 90, 26);
 
-    let popup_x = (area.width.saturating_sub(popup_width)) / 2;
-    let popup_y = (area.height.saturating_sub(popup_height)) / 2;
+    // Tab titles in the border title — same pattern as the main station list tabs
+    let title = tab_line(
+        &[
+            ("Keys", app.help_tab == HelpTab::Keys),
+            ("Settings", app.help_tab == HelpTab::Settings),
+        ],
+        theme,
+    );
+    let block = popup_block(title, theme);
+    f.render_widget(block, popup_area);
 
-    let popup_area = Rect {
-        x: popup_x,
-        y: popup_y,
-        width: popup_width,
-        height: popup_height,
+    // Content fills the interior directly (no inner tab bar or separator)
+    let content_area = Rect {
+        x: popup_area.x + 1,
+        y: popup_area.y + 1,
+        width: popup_area.width.saturating_sub(2),
+        height: popup_area.height.saturating_sub(2),
     };
 
-    // Clear the background
-    f.render_widget(Clear, popup_area);
+    match app.help_tab {
+        HelpTab::Keys => draw_help_keys_content(f, content_area),
+        HelpTab::Settings => draw_help_settings_content(f, app, content_area, theme),
+    }
+}
 
-    // Create the help text
+fn draw_help_keys_content(f: &mut Frame, area: Rect) {
     let help_text = vec![
-        Line::from(Span::styled(
-            "Keyboard Shortcuts",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(""),
         Line::from(vec![Span::styled(
             "Navigation",
             Style::default()
@@ -632,26 +623,67 @@ fn draw_help_popup(f: &mut Frame) {
             Span::styled("  Ctrl+C      ", Style::default().fg(Color::Yellow)),
             Span::raw("Quit application"),
         ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Press Esc or ? to close this help",
-            Style::default().fg(Color::DarkGray),
-        )),
     ];
 
-    let paragraph = Paragraph::new(help_text)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Yellow))
-                .title(" Help - LazyRadio ")
-                .title_style(
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                ),
-        )
-        .alignment(Alignment::Left);
+    f.render_widget(Paragraph::new(help_text).alignment(Alignment::Left), area);
+}
 
-    f.render_widget(paragraph, popup_area);
+fn draw_help_settings_content(f: &mut Frame, app: &App, area: Rect, theme: &Theme) {
+    let label_width = 22usize;
+
+    let settings: &[(&str, &str)] = &[
+        ("Startup Tab", app.config.startup_tab.label()),
+        (
+            "Default Search Order",
+            app.config.default_search_order.label(),
+        ),
+        (
+            "Play at Startup",
+            if app.config.play_at_startup {
+                "On"
+            } else {
+                "Off"
+            },
+        ),
+        (
+            "Auto-vote Favorites",
+            if app.config.auto_vote_favorites {
+                "On"
+            } else {
+                "Off"
+            },
+        ),
+    ];
+
+    let mut lines = vec![Line::from("")];
+
+    for (i, (label, value)) in settings.iter().enumerate() {
+        let is_selected = i == app.settings_selected;
+        let padding = label_width.saturating_sub(label.len());
+        let label_part = format!("  {}{}", label, " ".repeat(padding));
+        let value_part = format!("[ {} ]", value);
+
+        let row = Line::from(vec![
+            Span::styled(
+                label_part,
+                if is_selected {
+                    theme.tab_active
+                } else {
+                    theme.body
+                },
+            ),
+            Span::styled(
+                value_part,
+                if is_selected {
+                    theme.selection
+                } else {
+                    theme.shortcut_key
+                },
+            ),
+        ]);
+        lines.push(row);
+        lines.push(Line::from(""));
+    }
+
+    f.render_widget(Paragraph::new(lines).alignment(Alignment::Left), area);
 }

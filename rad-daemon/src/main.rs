@@ -1,5 +1,5 @@
-//! LazyRadio Headless Player Daemon
-//! 
+//! Headless Player Daemon
+//!
 //! A lightweight, persistent audio player process that communicates with TUI/CLI clients
 //! via Unix socket IPC. This daemon continues playing music even after the client disconnects.
 //! 
@@ -7,6 +7,7 @@
 
 use anyhow::Result;
 use std::fs;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -17,7 +18,7 @@ use tracing_subscriber;
 
 use rad_core::{
     config::{get_data_dir, Config},
-    player::{AudioPlayer, PlayerCommand},
+    player::{AudioPlayer, PlayerCommand, PlayerState},
     ClientMessage, DaemonMessage,
 };
 
@@ -34,7 +35,7 @@ async fn main() -> Result<()> {
         .with_ansi(false)
         .init();
 
-    info!("LazyRadio Player Daemon starting...");
+    info!("Player daemon starting...");
 
     // Get socket path
     let socket_path = data_dir.join(DAEMON_SOCKET);
@@ -75,14 +76,25 @@ async fn main() -> Result<()> {
     let last_activity = Arc::new(Mutex::new(Instant::now()));
     let last_activity_check = last_activity.clone();
 
-    // Spawn idle timeout monitor task
+    // Shared flag: handle_client sets this after every command so the idle
+    // task can check playback state without holding the AudioPlayer lock
+    // (AudioPlayer is not Send, so it cannot cross thread boundaries).
+    let is_playing = Arc::new(AtomicBool::new(false));
+    let is_playing_idle = is_playing.clone();
+
+    // Spawn idle timeout monitor task.
+    // The countdown only advances while the daemon is not playing — if music
+    // is playing the timer is reset so the daemon stays alive indefinitely.
     tokio::spawn(async move {
         loop {
-            tokio::time::sleep(Duration::from_secs(60)).await; // Check every minute
-            
-            let last_activity_time = *last_activity_check.lock().await;
-            let elapsed = last_activity_time.elapsed();
-            
+            tokio::time::sleep(Duration::from_secs(60)).await;
+
+            if is_playing_idle.load(Ordering::Relaxed) {
+                *last_activity_check.lock().await = Instant::now();
+                continue;
+            }
+
+            let elapsed = last_activity_check.lock().await.elapsed();
             if elapsed > Duration::from_secs(IDLE_TIMEOUT_SECS) {
                 info!("Daemon idle for {} seconds, shutting down", elapsed.as_secs());
                 std::process::exit(0);
@@ -97,9 +109,10 @@ async fn main() -> Result<()> {
                 info!("New client connected");
                 let player_ref = player.clone();
                 let last_activity_ref = last_activity.clone();
+                let is_playing_ref = is_playing.clone();
 
                 // Process this client synchronously within an async context
-                if let Err(e) = handle_client(stream, player_ref, last_activity_ref).await {
+                if let Err(e) = handle_client(stream, player_ref, last_activity_ref, is_playing_ref).await {
                     error!("Client handler error: {}", e);
                 }
             }
@@ -114,6 +127,7 @@ async fn handle_client(
     stream: UnixStream,
     player: Arc<Mutex<AudioPlayer>>,
     last_activity: Arc<Mutex<Instant>>,
+    is_playing: Arc<AtomicBool>,
 ) -> Result<()> {
     let (reader, writer) = tokio::io::split(stream);
     let mut reader = BufReader::new(reader);
@@ -153,6 +167,10 @@ async fn handle_client(
             ClientMessage::GetStatus => {
                 let s = player.lock().await;
                 let info = s.get_info();
+                is_playing.store(
+                    matches!(info.state, PlayerState::Playing | PlayerState::Loading),
+                    Ordering::Relaxed,
+                );
                 DaemonMessage::Status {
                     state: info.state.into(),
                     station_name: info.station_name,
@@ -186,6 +204,10 @@ async fn handle_client(
                     // Get updated status
                     let s = player.lock().await;
                     let info = s.get_info();
+                    is_playing.store(
+                        matches!(info.state, PlayerState::Playing | PlayerState::Loading),
+                        Ordering::Relaxed,
+                    );
                     DaemonMessage::Status {
                         state: info.state.into(),
                         station_name: info.station_name,

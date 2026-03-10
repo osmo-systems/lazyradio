@@ -5,12 +5,120 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum StartupTab {
+    Search,
+    Favorites,
+    History,
+}
+
+impl Default for StartupTab {
+    fn default() -> Self {
+        StartupTab::Search
+    }
+}
+
+impl StartupTab {
+    pub fn label(&self) -> &'static str {
+        match self {
+            StartupTab::Search => "Search",
+            StartupTab::Favorites => "Favorites",
+            StartupTab::History => "History",
+        }
+    }
+
+    pub fn cycle_next(&self) -> Self {
+        match self {
+            StartupTab::Search => StartupTab::Favorites,
+            StartupTab::Favorites => StartupTab::History,
+            StartupTab::History => StartupTab::Search,
+        }
+    }
+
+    pub fn cycle_prev(&self) -> Self {
+        match self {
+            StartupTab::Search => StartupTab::History,
+            StartupTab::Favorites => StartupTab::Search,
+            StartupTab::History => StartupTab::Favorites,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum DefaultSearchOrder {
+    Votes,
+    Name,
+    ClickCount,
+    Bitrate,
+    Random,
+}
+
+impl Default for DefaultSearchOrder {
+    fn default() -> Self {
+        DefaultSearchOrder::Votes
+    }
+}
+
+impl DefaultSearchOrder {
+    pub fn as_api_str(&self) -> &'static str {
+        match self {
+            DefaultSearchOrder::Votes => "votes",
+            DefaultSearchOrder::Name => "name",
+            DefaultSearchOrder::ClickCount => "clickcount",
+            DefaultSearchOrder::Bitrate => "bitrate",
+            DefaultSearchOrder::Random => "random",
+        }
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            DefaultSearchOrder::Votes => "Votes",
+            DefaultSearchOrder::Name => "Name",
+            DefaultSearchOrder::ClickCount => "Click Count",
+            DefaultSearchOrder::Bitrate => "Bitrate",
+            DefaultSearchOrder::Random => "Random",
+        }
+    }
+
+    pub fn cycle_next(&self) -> Self {
+        match self {
+            DefaultSearchOrder::Votes => DefaultSearchOrder::Name,
+            DefaultSearchOrder::Name => DefaultSearchOrder::ClickCount,
+            DefaultSearchOrder::ClickCount => DefaultSearchOrder::Bitrate,
+            DefaultSearchOrder::Bitrate => DefaultSearchOrder::Random,
+            DefaultSearchOrder::Random => DefaultSearchOrder::Votes,
+        }
+    }
+
+    pub fn cycle_prev(&self) -> Self {
+        match self {
+            DefaultSearchOrder::Votes => DefaultSearchOrder::Random,
+            DefaultSearchOrder::Name => DefaultSearchOrder::Votes,
+            DefaultSearchOrder::ClickCount => DefaultSearchOrder::Name,
+            DefaultSearchOrder::Bitrate => DefaultSearchOrder::ClickCount,
+            DefaultSearchOrder::Random => DefaultSearchOrder::Bitrate,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub cache_duration_secs: u64,
     pub max_history_entries: usize,
     pub default_volume: f32,
     pub station_limit: usize,
+
+    // User preferences
+    #[serde(default)]
+    pub startup_tab: StartupTab,
+    #[serde(default)]
+    pub default_search_order: DefaultSearchOrder,
+    #[serde(default)]
+    pub play_at_startup: bool,
+    #[serde(default)]
+    pub auto_vote_favorites: bool,
 
     // Session state
     #[serde(default)]
@@ -28,6 +136,10 @@ impl Default for Config {
             max_history_entries: 50,
             default_volume: 0.5,
             station_limit: 100,
+            startup_tab: StartupTab::default(),
+            default_search_order: DefaultSearchOrder::default(),
+            play_at_startup: false,
+            auto_vote_favorites: false,
             last_volume: None,
             last_station_name: None,
             last_station_url: None,

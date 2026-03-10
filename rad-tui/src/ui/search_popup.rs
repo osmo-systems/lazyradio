@@ -1,6 +1,6 @@
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
     Frame,
@@ -8,6 +8,7 @@ use ratatui::{
 use std::time::Instant;
 
 use rad_core::search::{detect_context, parse_query, parser, AutocompleteContext, ParseError};
+use tui_kit::Theme;
 
 pub struct SearchPopup {
     pub input: String,
@@ -55,16 +56,78 @@ impl SearchPopup {
         }
     }
 
-    pub fn move_cursor_left(&mut self) {
-        if self.cursor_position > 0 {
-            self.cursor_position -= 1;
+    /// Context-aware word deletion for `flag=value` tokens:
+    ///
+    /// - Cursor **in value**  → delete only the value text, leaving `flag=` intact.
+    /// - Cursor **in key**    → delete the whole `flag=value` token (including any
+    ///   trailing space), but keep the space that precedes the token so adjacent
+    ///   tokens stay correctly separated.
+    /// - Cursor after a space → delete just the space (fallback to char delete).
+    pub fn delete_word(&mut self) {
+        if self.cursor_position == 0 {
+            return;
         }
-    }
 
-    pub fn move_cursor_right(&mut self) {
-        if self.cursor_position < self.input.len() {
-            self.cursor_position += 1;
+        let pos = self.cursor_position;
+
+        // Bounds of the current token (space-delimited).
+        let token_start = self.input[..pos]
+            .rfind(' ')
+            .map(|i| i + 1)
+            .unwrap_or(0);
+
+        if token_start == pos {
+            // Cursor is right after a space with no token to its left.
+            self.delete_char();
+            return;
         }
+
+        let token_end = self.input[pos..]
+            .find(' ')
+            .map(|i| pos + i)
+            .unwrap_or(self.input.len());
+
+        // Decide: are we in the key part or the value part?
+        let token_before_cursor = &self.input[token_start..pos];
+
+        if let Some(eq_pos) = token_before_cursor.find('=') {
+            // ── Value case ────────────────────────────────────────────────────
+            // Remove only the value text; leave `flag=` in place.
+            let value_start = token_start + eq_pos + 1;
+            if value_start < token_end {
+                self.input.drain(value_start..token_end);
+                self.cursor_position = value_start;
+            }
+            // If the value is already empty (cursor right after '='), no-op.
+        } else {
+            // Cursor is in a word with no '=' anywhere in the token.
+            // Check whether the full token contains '=' (cursor might be in the key
+            // part of `flag=value` with the '=' to the right of the cursor).
+            let full_token = &self.input[token_start..token_end];
+            if full_token.contains('=') {
+                // ── Key case ──────────────────────────────────────────────────
+                // Cursor is in the key part (before '=').  Remove the entire
+                // `flag=value` token.  Consume the trailing space if present so
+                // no double-space is left behind, but leave the space that
+                // precedes the token.
+                let remove_end = if token_end < self.input.len()
+                    && self.input.as_bytes()[token_end] == b' '
+                {
+                    token_end + 1
+                } else {
+                    token_end
+                };
+                self.input.drain(token_start..remove_end);
+                self.cursor_position = token_start;
+            } else {
+                // ── Bare word (free value, no '=') ────────────────────────────
+                // Standard char-by-char deletion.
+                self.delete_char();
+                return; // reset_error_timer already called by delete_char
+            }
+        }
+
+        self.reset_error_timer();
     }
 
     pub fn autocomplete_next(&mut self) {
@@ -194,10 +257,10 @@ impl SearchPopup {
         }
     }
 
-    pub fn render(&self, f: &mut Frame, area: Rect) {
+    pub fn render(&self, f: &mut Frame, area: Rect, theme: &Theme) {
         // Calculate popup size
         let popup_width = 52;
-        let base_height = 7; // Title + input + borders + footer
+        let base_height = 5; // Input block (3) + padding (2)
 
         // Show all autocomplete items (up to 14 for field names)
         let max_autocomplete_items = 14;
@@ -242,8 +305,6 @@ impl SearchPopup {
             constraints.push(Constraint::Length(error_height));
         }
 
-        constraints.push(Constraint::Length(2)); // Footer
-
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints(constraints)
@@ -252,12 +313,12 @@ impl SearchPopup {
         let mut current_chunk = 0;
 
         // Render input
-        self.render_input(f, chunks[current_chunk]);
+        self.render_input(f, chunks[current_chunk], theme);
         current_chunk += 1;
 
         // Render autocomplete if shown
         if self.autocomplete_shown {
-            self.render_autocomplete(f, chunks[current_chunk]);
+            self.render_autocomplete(f, chunks[current_chunk], theme);
             current_chunk += 1;
         }
 
@@ -267,17 +328,17 @@ impl SearchPopup {
             current_chunk += 1;
         }
 
-        // Render footer
-        self.render_footer(f, chunks[current_chunk]);
+        let _ = current_chunk;
     }
 
-    fn render_input(&self, f: &mut Frame, area: Rect) {
+    fn render_input(&self, f: &mut Frame, area: Rect, theme: &Theme) {
         // Highlight syntax in input
-        let highlighted = self.highlight_syntax();
+        let highlighted = self.highlight_syntax(theme);
 
         let input_paragraph = Paragraph::new(highlighted).block(
             Block::default()
                 .borders(Borders::ALL)
+                .border_style(theme.border_popup)
                 .title("Search Stations")
                 .title_alignment(Alignment::Center),
         );
@@ -296,7 +357,7 @@ impl SearchPopup {
         }
     }
 
-    fn render_autocomplete(&self, f: &mut Frame, area: Rect) {
+    fn render_autocomplete(&self, f: &mut Frame, area: Rect, theme: &Theme) {
         let visible_items = 14; // Show all items up to 14
         let items: Vec<ListItem> = self
             .autocomplete_items
@@ -307,7 +368,7 @@ impl SearchPopup {
             .map(|(i, item)| {
                 let index = i + self.autocomplete_scroll_offset;
                 let style = if index == self.autocomplete_selected {
-                    Style::default().fg(Color::Black).bg(Color::Yellow)
+                    theme.selection
                 } else {
                     Style::default()
                 };
@@ -317,14 +378,8 @@ impl SearchPopup {
                         let icon = self.get_icon_for_field(item);
                         format!("{}{}", icon, item)
                     }
-                    AutocompleteContext::FieldValue(_) => {
-                        // No icon for field values (like "France", "Germany", etc.)
-                        item.to_string()
-                    }
-                    AutocompleteContext::InvalidComma => {
-                        // Should not happen (no items to display)
-                        item.to_string()
-                    }
+                    AutocompleteContext::FieldValue(_) => item.to_string(),
+                    AutocompleteContext::InvalidComma => item.to_string(),
                 };
                 ListItem::new(display_text).style(style)
             })
@@ -337,7 +392,12 @@ impl SearchPopup {
             " No suggestions ".to_string()
         };
 
-        let list = List::new(items).block(Block::default().borders(Borders::ALL).title(title));
+        let list = List::new(items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(theme.border_popup)
+                .title(title),
+        );
 
         f.render_widget(list, area);
     }
@@ -345,20 +405,13 @@ impl SearchPopup {
     fn render_error(&self, f: &mut Frame, area: Rect) {
         if let Some(error) = &self.parse_error {
             let error_text = format!("{}", error);
-            let paragraph = Paragraph::new(error_text).style(Style::default().fg(Color::Red));
+            let paragraph =
+                Paragraph::new(error_text).style(Style::default().fg(ratatui::style::Color::Red));
             f.render_widget(paragraph, area);
         }
     }
 
-    fn render_footer(&self, f: &mut Frame, area: Rect) {
-        let footer_text = "Enter: Search  Tab: Complete  Esc: Cancel";
-        let paragraph = Paragraph::new(footer_text)
-            .style(Style::default().fg(Color::Gray))
-            .alignment(Alignment::Center);
-        f.render_widget(paragraph, area);
-    }
-
-    fn highlight_syntax(&self) -> Line<'_> {
+    fn highlight_syntax(&self, theme: &Theme) -> Line<'_> {
         // Parse the input and highlight fields
         let mut spans = Vec::new();
         let mut current_pos = 0;
@@ -381,9 +434,9 @@ impl SearchPopup {
 
                     // Check if field is valid
                     let field_style = if parser::validate_field(&field.to_lowercase()) {
-                        Style::default().fg(Color::Green)
+                        theme.tab_active
                     } else {
-                        Style::default().fg(Color::Red)
+                        Style::default().fg(ratatui::style::Color::Red)
                     };
 
                     spans.push(Span::styled(field.to_string(), field_style));
@@ -398,7 +451,7 @@ impl SearchPopup {
                             if ch == ',' {
                                 spans.push(Span::styled(
                                     ch.to_string(),
-                                    Style::default().fg(Color::Red),
+                                    Style::default().fg(ratatui::style::Color::Red),
                                 ));
                             } else {
                                 spans.push(Span::raw(ch.to_string()));
@@ -409,15 +462,8 @@ impl SearchPopup {
                         spans.push(Span::raw(value_with_equals.to_string()));
                     }
                 } else {
-                    // Not a field=value pair, might be incomplete
-                    let style = if parser::validate_field(&part.to_lowercase()) {
-                        Style::default().fg(Color::Green)
-                    } else if !part.contains('=') {
-                        Style::default().fg(Color::Yellow) // Incomplete
-                    } else {
-                        Style::default().fg(Color::Red)
-                    };
-                    spans.push(Span::styled(part.to_string(), style));
+                    // Bare word: treated as an implicit name filter — use section_header color
+                    spans.push(Span::styled(part.to_string(), theme.section_header));
                 }
 
                 current_pos = actual_pos + part.len();
@@ -436,25 +482,4 @@ impl SearchPopup {
 
         Line::from(spans)
     }
-}
-
-/// Helper function to create a centered rect
-fn centered_rect(width: u16, height: u16, r: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length((r.height.saturating_sub(height)) / 2),
-            Constraint::Length(height),
-            Constraint::Min(0),
-        ])
-        .split(r);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Length((r.width.saturating_sub(width)) / 2),
-            Constraint::Length(width),
-            Constraint::Min(0),
-        ])
-        .split(popup_layout[1])[1]
 }

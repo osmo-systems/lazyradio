@@ -297,7 +297,7 @@ fn draw_player(f: &mut Frame, app: &App, area: Rect) {
 
     // Calculate spacing for state and volume to be on the same line
     // We want: "[Icon] State" on left, "Vol: [bar] XX%" on right
-    let volume_text = format!("Vol: {} {:.0}%", volume_bar, (info.volume * 100.0).round());
+    let volume_text = format!("Vol {} {:.0}%", volume_bar, (info.volume * 100.0).round());
     let state_text_len = icon.len() + 1 + state_name.len(); // icon + space + state name
     let volume_text_len = volume_text.len();
     let available_width = area.width.saturating_sub(4) as usize; // Account for borders and padding
@@ -326,7 +326,7 @@ fn draw_player(f: &mut Frame, app: &App, area: Rect) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(" ".repeat(spacing)),
-            Span::styled("Vol: ", Style::default().fg(Color::Cyan)),
+            Span::styled("Vol ", Style::default().fg(Color::Cyan)),
             Span::styled(&volume_bar, Style::default().fg(Color::Cyan)),
             Span::raw(format!(" {:.0}%", (info.volume * 100.0).round())),
         ]),

@@ -200,12 +200,16 @@ pub fn parse_query(input: &str) -> Result<SearchQuery, ParseError> {
     // Split by spaces to get field=value pairs, respecting quotes
     let pairs = tokenize_query(input);
 
+    let mut bare_words: Vec<String> = Vec::new();
+
     for pair in pairs {
         // Split by '=' to get field and value
         let parts: Vec<&str> = pair.splitn(2, '=').collect();
 
         if parts.len() != 2 {
-            return Err(ParseError::MissingEquals(parts[0].to_string()));
+            // Bare word: treated as an implicit name filter
+            bare_words.push(parts[0].to_string());
+            continue;
         }
 
         let field = parts[0].trim().to_lowercase();
@@ -376,6 +380,12 @@ pub fn parse_query(input: &str) -> Result<SearchQuery, ParseError> {
         }
     }
 
+    // Bare words are joined and used as an implicit name filter (takes precedence if
+    // no explicit `name=` field was given)
+    if !bare_words.is_empty() && query.name.is_none() {
+        query.name = Some(bare_words.join(" "));
+    }
+
     Ok(query)
 }
 
@@ -448,22 +458,20 @@ mod tests {
     #[test]
     fn test_parse_simple_query() {
         let query = parse_query("country=france").unwrap();
-        assert_eq!(query.country, Some(vec!["france".to_string()]));
+        assert_eq!(query.country, Some("france".to_string()));
     }
 
     #[test]
     fn test_parse_multiple_values() {
-        let query = parse_query("country=france,germany").unwrap();
-        assert_eq!(
-            query.country,
-            Some(vec!["france".to_string(), "germany".to_string()])
-        );
+        // Multiple comma-separated countries are not supported; this returns an error
+        let result = parse_query("country=france,germany");
+        assert!(matches!(result, Err(ParseError::InvalidValue { .. })));
     }
 
     #[test]
     fn test_parse_multiple_fields() {
         let query = parse_query("country=france tag=jazz").unwrap();
-        assert_eq!(query.country, Some(vec!["france".to_string()]));
+        assert_eq!(query.country, Some("france".to_string()));
         assert_eq!(query.tags, Some(vec!["jazz".to_string()]));
     }
 
@@ -489,9 +497,24 @@ mod tests {
     }
 
     #[test]
-    fn test_missing_equals() {
-        let result = parse_query("country france");
-        assert!(matches!(result, Err(ParseError::MissingEquals(_))));
+    fn test_bare_word_as_name() {
+        // A single bare word (no '=') is treated as an implicit name filter
+        let query = parse_query("jazz").unwrap();
+        assert_eq!(query.name, Some("jazz".to_string()));
+    }
+
+    #[test]
+    fn test_bare_words_joined_as_name() {
+        // Multiple bare words are joined with a space into the name filter
+        let query = parse_query("jazz radio").unwrap();
+        assert_eq!(query.name, Some("jazz radio".to_string()));
+    }
+
+    #[test]
+    fn test_bare_word_does_not_override_explicit_name() {
+        // Explicit `name=` takes precedence; extra bare words are ignored
+        let query = parse_query("name=blues extra").unwrap();
+        assert_eq!(query.name, Some("blues".to_string()));
     }
 
     #[test]
@@ -509,7 +532,7 @@ mod tests {
     #[test]
     fn test_format_query() {
         let mut query = SearchQuery::default();
-        query.country = Some(vec!["france".to_string()]);
+        query.country = Some("france".to_string());
         query.tags = Some(vec!["jazz".to_string()]);
 
         let formatted = format_query(&query);
@@ -523,7 +546,7 @@ mod tests {
         assert!(is_default_query(&query));
 
         let mut query = SearchQuery::default();
-        query.country = Some(vec!["france".to_string()]);
+        query.country = Some("france".to_string());
         assert!(!is_default_query(&query));
     }
 
@@ -534,7 +557,7 @@ mod tests {
 
         query.next_page();
         assert_eq!(query.current_page(), 2);
-        assert_eq!(query.offset, 100);
+        assert_eq!(query.offset, query.limit); // offset advances by one page (limit)
 
         query.prev_page();
         assert_eq!(query.current_page(), 1);

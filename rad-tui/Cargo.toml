@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 # Workspace dependencies
+tui-kit  = { path = "../tui-kit" }
 rad-core = { path = "../rad-core" }
 tokio = { workspace = true }
 anyhow = { workspace = true }

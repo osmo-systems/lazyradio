@@ -13,7 +13,7 @@ use tokio::time::interval;
 use tracing::info;
 use tracing_subscriber;
 
-use crate::app::App;
+use crate::app::{App, HelpTab};
 use rad_core::{
     config::{cleanup_old_logs, get_data_dir},
     search::{get_suggestions, parse_query},
@@ -88,6 +88,12 @@ async fn main() -> Result<()> {
         info!("Retrieved initial player status from daemon");
     }
 
+    // Calibrate the query limit to the actual terminal height before the first search.
+    // Layout overhead: 8 (player+log) + 1 (status bar) + 2 (list borders) = 11 rows.
+    if let Ok(size) = terminal.size() {
+        app.current_query.limit = (size.height.saturating_sub(11) as usize).max(1);
+    }
+
     // Load initial data (popular stations with default query)
     if let Err(e) = app.execute_search().await {
         tracing::error!("Failed to load initial stations: {}", e);
@@ -95,6 +101,21 @@ async fn main() -> Result<()> {
     }
 
     tracing::info!("Initial data loaded. Stations count: {}", app.stations.len());
+
+    // Auto-vote favorites at startup if configured
+    if let Err(e) = app.auto_vote_favorites().await {
+        tracing::warn!("Auto-vote for favorites failed: {}", e);
+    }
+
+    // Auto-play last station at startup if configured
+    if app.config.play_at_startup {
+        if !app.player_info.station_url.is_empty() {
+            info!("play_at_startup: resuming last station");
+            if let Err(e) = app.play_restored(&mut daemon_conn).await {
+                tracing::warn!("Failed to auto-play at startup: {}", e);
+            }
+        }
+    }
 
     // Setup terminal
     enable_raw_mode()?;
@@ -211,11 +232,79 @@ async fn handle_key_event(
 
     // Handle help popup first
     if app.help_popup {
-        match key {
-            KeyCode::Esc | KeyCode::Char('?') => {
-                app.help_popup = false;
-            }
-            _ => {}
+        match app.help_tab {
+            HelpTab::Keys => match key {
+                KeyCode::Esc | KeyCode::Char('?') => {
+                    app.help_popup = false;
+                }
+                KeyCode::Tab => {
+                    app.help_tab = HelpTab::Settings;
+                }
+                _ => {}
+            },
+            HelpTab::Settings => match key {
+                KeyCode::Esc | KeyCode::Char('?') => {
+                    app.help_popup = false;
+                }
+                KeyCode::Tab => {
+                    app.help_tab = HelpTab::Keys;
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if app.settings_selected > 0 {
+                        app.settings_selected -= 1;
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if app.settings_selected < 3 {
+                        app.settings_selected += 1;
+                    }
+                }
+                KeyCode::Right | KeyCode::Enter => {
+                    match app.settings_selected {
+                        0 => {
+                            app.config.startup_tab = app.config.startup_tab.cycle_next();
+                            let _ = app.config.save(&app.data_dir);
+                        }
+                        1 => {
+                            app.config.default_search_order = app.config.default_search_order.cycle_next();
+                            app.current_query.order = Some(app.config.default_search_order.as_api_str().to_string());
+                            let _ = app.config.save(&app.data_dir);
+                        }
+                        2 => {
+                            app.config.play_at_startup = !app.config.play_at_startup;
+                            let _ = app.config.save(&app.data_dir);
+                        }
+                        3 => {
+                            app.config.auto_vote_favorites = !app.config.auto_vote_favorites;
+                            let _ = app.config.save(&app.data_dir);
+                        }
+                        _ => {}
+                    }
+                }
+                KeyCode::Left => {
+                    match app.settings_selected {
+                        0 => {
+                            app.config.startup_tab = app.config.startup_tab.cycle_prev();
+                            let _ = app.config.save(&app.data_dir);
+                        }
+                        1 => {
+                            app.config.default_search_order = app.config.default_search_order.cycle_prev();
+                            app.current_query.order = Some(app.config.default_search_order.as_api_str().to_string());
+                            let _ = app.config.save(&app.data_dir);
+                        }
+                        2 => {
+                            app.config.play_at_startup = !app.config.play_at_startup;
+                            let _ = app.config.save(&app.data_dir);
+                        }
+                        3 => {
+                            app.config.auto_vote_favorites = !app.config.auto_vote_favorites;
+                            let _ = app.config.save(&app.data_dir);
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            },
         }
         return;
     }
@@ -227,6 +316,10 @@ async fn handle_key_event(
             KeyCode::Esc | KeyCode::Enter => {
                 tracing::info!("Closing error/warning popup");
                 app.close_error_popup();
+                // Clear error on daemon side so get_status() stops returning it,
+                // and clear it locally so the re-trigger check doesn't fire this tick.
+                let _ = daemon_conn.clear_error().await;
+                app.player_info.error_message = None;
             }
             _ => {
                 tracing::info!("Ignoring key: {:?}", key);
@@ -247,7 +340,7 @@ async fn handle_key_event(
             }
             KeyCode::Backspace => {
                 if let Some(popup) = &mut app.search_popup {
-                    popup.delete_char();
+                    popup.delete_word();
                     let suggestions = get_suggestions(&popup.input, popup.cursor_position, &app.autocomplete_data);
                     popup.update_autocomplete(suggestions);
                 }
@@ -314,6 +407,8 @@ async fn handle_key_event(
     match key {
         KeyCode::Char('?') => {
             app.help_popup = true;
+            app.help_tab = HelpTab::Keys;
+            app.settings_selected = 0;
         }
         KeyCode::Char('q') | KeyCode::Char('Q') => app.quit(),
         KeyCode::Up => app.select_prev(),
@@ -369,8 +464,23 @@ async fn handle_key_event(
             let _ = app.volume_down(daemon_conn).await;
         }
         KeyCode::Char('f') | KeyCode::Char('F') => {
+            // Capture UUID before the mutable borrow for toggle
+            let selected_uuid = app.get_selected_station()
+                .map(|s| s.station_uuid.clone());
             if let Err(e) = app.toggle_favorite().await {
                 tracing::error!("Failed to toggle favorite: {}", e);
+            } else if app.config.auto_vote_favorites {
+                // If the station was just added to favorites, vote for it immediately
+                if let Some(uuid) = selected_uuid {
+                    if app.favorites.is_favorite(&uuid)
+                        && !app.vote_manager.has_voted_recently(&uuid)
+                    {
+                        match app.api_client.vote_for_station(&uuid).await {
+                            Ok(_) => { let _ = app.vote_manager.record_vote(&uuid); }
+                            Err(e) => tracing::warn!("Auto-vote on favorite add failed: {}", e),
+                        }
+                    }
+                }
             }
         }
         KeyCode::Char('v') | KeyCode::Char('V') => {

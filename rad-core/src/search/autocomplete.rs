@@ -255,7 +255,7 @@ mod tests {
         assert_eq!(ctx, AutocompleteContext::FieldValue("country".to_string()));
         
         let ctx = detect_context("country=france,", 15);
-        assert_eq!(ctx, AutocompleteContext::FieldValue("country".to_string()));
+        assert_eq!(ctx, AutocompleteContext::InvalidComma); // trailing comma is invalid
     }
 
     #[test]

@@ -27,7 +27,7 @@ async fn main() -> Result<()> {
         .with_ansi(false)
         .init();
 
-    info!("LazyRadio CLI starting with args: {:?}", env::args().collect::<Vec<_>>());
+    info!("CLI starting with args: {:?}", env::args().collect::<Vec<_>>());
 
     // Clean up old log files
     if let Err(e) = cleanup_old_logs(&data_dir, 7) {
@@ -54,7 +54,7 @@ async fn main() -> Result<()> {
             print_help();
         }
         Some("quit") | Some("exit") => {
-            println!("Exiting LazyRadio CLI");
+            println!("Exiting rad CLI");
             return Ok(());
         }
         _ => {
@@ -240,7 +240,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    info!("LazyRadio CLI completed successfully");
+    info!("CLI completed successfully");
     Ok(())
 }
 
