@@ -1,4 +1,5 @@
 mod app;
+mod cli;
 mod ui;
 
 use anyhow::Result;
@@ -23,20 +24,26 @@ use rad_core::{
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize logging
     let data_dir = get_data_dir()?;
-    let log_file = tracing_appender::rolling::daily(&data_dir, "radt.log");
+
+    // Shared log file for both TUI and CLI modes
+    let log_file = tracing_appender::rolling::daily(&data_dir, "rad.log");
     tracing_subscriber::fmt()
         .with_writer(log_file)
         .with_ansi(false)
         .init();
 
-    info!("Starting Web Radio TUI");
-
-    // Clean up old log files (older than 7 days)
     if let Err(e) = cleanup_old_logs(&data_dir, 7) {
         tracing::warn!("Failed to clean up old logs: {}", e);
     }
+
+    // If any arguments are provided, run in CLI mode
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 {
+        return cli::run(args, &data_dir).await;
+    }
+
+    info!("Starting Web Radio TUI");
 
     // Initialize connection to player daemon FIRST (this should be instant)
     let daemon_client = PlayerDaemonClient::new()?;
