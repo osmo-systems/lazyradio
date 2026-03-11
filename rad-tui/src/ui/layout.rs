@@ -383,13 +383,24 @@ fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line, them
                     )
                 };
 
-                spans.push(Span::styled(" ", sep));
-                spans.push(Span::styled(station.name.clone(), name));
-                spans.push(Span::styled(" - ", sep));
-                spans.push(Span::styled(station.country.clone(), country));
-                spans.push(Span::styled(" - ", sep));
-                spans.push(Span::styled(station.format_codec(), codec));
-                spans.push(Span::styled(" - ", sep));
+                const NAME_W: usize = 32;
+                const COUNTRY_W: usize = 14;
+                const CODEC_W: usize = 6;
+
+                let name_str: String = station.name.chars().take(NAME_W).collect();
+                let country_str: String = station.country.chars().take(COUNTRY_W).collect();
+
+                let name_col    = format!("{:<width$}", name_str,    width = NAME_W);
+                let country_col = format!("{:<width$}", country_str, width = COUNTRY_W);
+                let codec_col   = format!("{:<width$}", station.format_codec(), width = CODEC_W);
+
+                spans.push(Span::styled(" ", base_style));
+                spans.push(Span::styled(name_col, name));
+                spans.push(Span::styled("  ", base_style));
+                spans.push(Span::styled(country_col, country));
+                spans.push(Span::styled("  ", base_style));
+                spans.push(Span::styled(codec_col, codec));
+                spans.push(Span::styled("  ", base_style));
                 spans.push(Span::styled(station.format_bitrate(), bitrate));
 
                 ListItem::new(Line::from(spans))
