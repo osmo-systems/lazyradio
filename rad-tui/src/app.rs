@@ -725,13 +725,19 @@ impl App {
                 return Ok(());
             }
 
+            // Record locally first so the UI highlights immediately
+            let _ = self.vote_manager.record_vote(&uuid);
+
             match self.api_client.vote_for_station(&uuid).await {
-                Ok(_) => {
-                    let _ = self.vote_manager.record_vote(&uuid);
-                    self.add_log(format!("Voted for: {}", name));
+                Ok(response) => {
+                    if response.ok {
+                        self.add_log(format!("Voted for: {}", name));
+                    } else {
+                        self.add_log(format!("Voted for: {} ({})", name, response.message));
+                    }
                 }
                 Err(e) => {
-                    self.add_log(format!("Failed to vote for {}: {}", name, e));
+                    self.add_log(format!("Vote recorded locally, API error: {}", e));
                 }
             }
         }

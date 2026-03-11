@@ -13,7 +13,7 @@ use tokio::time::interval;
 use tracing::info;
 use tracing_subscriber;
 
-use crate::app::{App, HelpTab};
+use crate::app::{App, HelpTab, Tab};
 use rad_core::{
     config::{cleanup_old_logs, get_data_dir},
     search::{get_suggestions, parse_query},
@@ -98,6 +98,11 @@ async fn main() -> Result<()> {
     if let Err(e) = app.execute_search().await {
         tracing::error!("Failed to load initial stations: {}", e);
         app.status_message = Some(format!("Failed to load stations: {}. Check network connection.", e));
+    }
+
+    // execute_search always loads Browse content; switch to the configured startup tab if needed
+    if app.current_tab != Tab::Browse {
+        app.reload_current_tab();
     }
 
     tracing::info!("Initial data loaded. Stations count: {}", app.stations.len());
