@@ -119,6 +119,8 @@ pub struct Config {
     pub play_at_startup: bool,
     #[serde(default)]
     pub auto_vote_favorites: bool,
+    #[serde(default = "default_true")]
+    pub show_logo: bool,
 
     // Session state
     #[serde(default)]
@@ -127,6 +129,10 @@ pub struct Config {
     pub last_station_name: Option<String>,
     #[serde(default)]
     pub last_station_url: Option<String>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for Config {
@@ -140,6 +146,7 @@ impl Default for Config {
             default_search_order: DefaultSearchOrder::default(),
             play_at_startup: false,
             auto_vote_favorites: false,
+            show_logo: true,
             last_volume: None,
             last_station_name: None,
             last_station_url: None,

@@ -53,7 +53,6 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 }
 
 fn draw_main_content(f: &mut Frame, app: &mut App, area: Rect, theme: &Theme) {
-    // Build tab titles
     let tab_title = tab_line(
         &[
             ("Browse", matches!(app.current_tab, Tab::Browse)),
@@ -62,20 +61,56 @@ fn draw_main_content(f: &mut Frame, app: &mut App, area: Rect, theme: &Theme) {
         ],
         theme,
     );
-
-    // All tabs just show station lists now
     draw_station_list(f, app, area, tab_title, theme);
 }
 
+fn draw_radio_art(f: &mut Frame, app: &App, area: Rect, theme: &Theme) {
+    // 4-phase breathing cycle mapped onto the 8-frame animation clock:
+    //   0-1 → small   2-3 → medium   4-5 → large   6-7 → medium
+    let phase = match app.animation_frame % 8 {
+        0 | 1 => 0,
+        2 | 3 => 1,
+        4 | 5 => 2,
+        _ => 1,
+    };
+
+    let (ant_left, ant_right): (&str, &str) = match phase {
+        0 => ("(  ", "  )"),
+        1 => ("(  (  ", "  )  )"),
+        _ => (". (  (  ", "  )  ) ."),
+    };
+
+    let signal_color = [Color::DarkGray, Color::Yellow, Color::LightYellow][phase];
+    let wave_color = [Color::DarkGray, Color::Gray, Color::White][phase];
+    let body_style = Style::default().fg(Color::DarkGray);
+    let logo_style = theme.tab_active;
+
+    let art: Vec<Line> = vec![
+        Line::from(vec![
+            Span::styled(ant_left, Style::default().fg(wave_color)),
+            Span::styled("●", Style::default().fg(signal_color).add_modifier(Modifier::BOLD)),
+            Span::styled(ant_right, Style::default().fg(wave_color)),
+        ]),
+        Line::from(""),
+        Line::from(Span::styled("_II_", body_style)),
+        Line::from(Span::styled("I||I", body_style)),
+        Line::from(Span::styled("██████╗  █████╗ ██████╗", logo_style)),
+        Line::from(Span::styled("██   ██╗██   ██╗██   ██╗", logo_style)),
+        Line::from(Span::styled("██████╔╝███████║██   ██║", logo_style)),
+        Line::from(Span::styled("██   ██╗██   ██║██   ██║", logo_style)),
+        Line::from(Span::styled("██   ██║██   ██║██████╔╝", logo_style)),
+        Line::from(""),
+        Line::from(Span::styled("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~", Style::default().fg(wave_color))),
+    ];
+
+    f.render_widget(Paragraph::new(art).alignment(Alignment::Center), area);
+}
+
 fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line, theme: &Theme) {
-    // Calculate visible stations count (area height minus borders and padding)
-    // Each station takes 1 line, borders take 2 lines
+    // Keep the query limit in sync with available rows so the list always fills the screen.
     let visible_count = (area.height.saturating_sub(2)) as usize;
     let visible_count = visible_count.max(1);
     app.visible_stations_count = visible_count;
-
-    // Keep the query limit in sync with the available rows.  On terminal resize this
-    // triggers a re-fetch so the list always fills the screen exactly.
     if visible_count != app.current_query.limit {
         app.current_query.limit = visible_count;
         app.pages_cache.clear();
@@ -93,90 +128,19 @@ fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line, them
         theme.border_focused
     };
 
-    if app.stations.is_empty() {
-        let text = if app.loading {
-            "Loading stations..."
-        } else {
-            "No stations found."
-        };
-
-        let paragraph = Paragraph::new(text)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(title)
-                    .border_style(border_style),
-            )
-            .alignment(Alignment::Center)
-            .wrap(Wrap { trim: true });
-
-        f.render_widget(paragraph, area);
-        return;
-    }
-
-    let list_items: Vec<ListItem> = app
-        .stations
-        .iter()
-        .enumerate()
-        .map(|(i, station)| {
-            let is_favorite = app.favorites.is_favorite(&station.station_uuid);
-            let status_marker = if station.is_online() { "●" } else { "○" };
-
-            let is_selected = i == app.selected_index;
-            let is_voted = app.vote_manager.has_voted_recently(&station.station_uuid);
-            let base_style = if is_selected {
-                theme.selection
-            } else if is_voted {
-                Style::default().fg(Color::LightGreen)
-            } else {
-                Style::default().fg(Color::White)
-            };
-
-            // Build content with styled spans
-            let mut spans = vec![];
-
-            // Left margin (2 chars): yellow star for favorites, spaces otherwise
-            if is_favorite {
-                // Yellow star emoji for favorites (unless selected, then use selection colors)
-                let star_style = if is_selected {
-                    base_style
-                } else {
-                    Style::default().fg(Color::Yellow)
-                };
-                spans.push(Span::styled("⭐", star_style));
-            } else {
-                // Empty margin for non-favorites
-                spans.push(Span::styled("  ", base_style));
-            }
-
-            // Status marker (online/offline)
-            spans.push(Span::styled(status_marker, base_style));
-
-            // Rest of the content
-            let content_text = format!(
-                " {} - {} - {} - {}",
-                station.name,
-                station.country,
-                station.format_codec(),
-                station.format_bitrate()
-            );
-            spans.push(Span::styled(content_text, base_style));
-
-            ListItem::new(Line::from(spans))
-        })
-        .collect();
-
-    // Combine title line with station count in a single Line
+    // Build title with station count
     let mut title_spans = title.spans;
-    title_spans.push(Span::raw(" ("));
-    title_spans.push(Span::styled(
-        format!("{}", app.stations.len()),
-        Style::default().fg(Color::Cyan),
-    ));
-    title_spans.push(Span::raw(" stations)"));
+    if !app.stations.is_empty() {
+        title_spans.push(Span::raw(" ("));
+        title_spans.push(Span::styled(
+            format!("{}", app.stations.len()),
+            Style::default().fg(Color::Cyan),
+        ));
+        title_spans.push(Span::raw(" stations)"));
+    }
     let full_title = Line::from(title_spans);
 
-    // Create pagination info for the right side if we have pagination
+    // Build and render the outer block first so we can work with the inner area
     let block = if app.current_page > 0 {
         let page_info = if app.is_last_page {
             format!("Page {}", app.current_page)
@@ -199,12 +163,98 @@ fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line, them
             .border_style(border_style)
     };
 
-    let list = List::new(list_items).block(block);
+    let inner = block.inner(area);
+    f.render_widget(block, area);
 
-    let mut state = ListState::default();
-    state.select(Some(app.selected_index));
+    // Station list items have a natural maximum width based on their format:
+    //   [⭐/  ][●] name - country - codec - bitrate
+    // We cap the list widget at this width; any remaining space goes to the logo.
+    const MAX_LIST_CONTENT_WIDTH: u16 = 80;
+    const ART_WIDTH: u16 = 33;
+    const ART_HEIGHT: u16 = 11;
 
-    f.render_stateful_widget(list, area, &mut state);
+    let list_width = inner.width.min(MAX_LIST_CONTENT_WIDTH);
+    let remaining = inner.width.saturating_sub(list_width);
+    let show_art = app.config.show_logo && remaining >= ART_WIDTH && inner.height >= ART_HEIGHT;
+
+    let list_area = Rect {
+        width: list_width,
+        ..inner
+    };
+
+    if app.stations.is_empty() {
+        let text = if app.loading {
+            "Loading stations..."
+        } else {
+            "No stations found."
+        };
+        f.render_widget(
+            Paragraph::new(text)
+                .alignment(Alignment::Center)
+                .wrap(Wrap { trim: true }),
+            list_area,
+        );
+    } else {
+        let list_items: Vec<ListItem> = app
+            .stations
+            .iter()
+            .enumerate()
+            .map(|(i, station)| {
+                let is_favorite = app.favorites.is_favorite(&station.station_uuid);
+                let status_marker = if station.is_online() { "●" } else { "○" };
+                let is_selected = i == app.selected_index;
+                let is_voted = app.vote_manager.has_voted_recently(&station.station_uuid);
+                let base_style = if is_selected {
+                    theme.selection
+                } else if is_voted {
+                    Style::default().fg(Color::LightGreen)
+                } else {
+                    Style::default().fg(Color::White)
+                };
+
+                let mut spans = vec![];
+                if is_favorite {
+                    let star_style = if is_selected {
+                        base_style
+                    } else {
+                        Style::default().fg(Color::Yellow)
+                    };
+                    spans.push(Span::styled("⭐", star_style));
+                } else {
+                    spans.push(Span::styled("  ", base_style));
+                }
+                spans.push(Span::styled(status_marker, base_style));
+                let content_text = format!(
+                    " {} - {} - {} - {}",
+                    station.name,
+                    station.country,
+                    station.format_codec(),
+                    station.format_bitrate()
+                );
+                spans.push(Span::styled(content_text, base_style));
+
+                ListItem::new(Line::from(spans))
+            })
+            .collect();
+
+        let list = List::new(list_items);
+        let mut state = ListState::default();
+        state.select(Some(app.selected_index));
+        f.render_stateful_widget(list, list_area, &mut state);
+    }
+
+    // Render art centred horizontally in the remaining space and vertically in the inner area
+    if show_art {
+        let h_pad = (remaining - ART_WIDTH) / 2;
+        let v_pad = inner.height.saturating_sub(ART_HEIGHT) / 2;
+        let art_area = Rect {
+            x: inner.x + list_width + h_pad,
+            y: inner.y + v_pad,
+            width: ART_WIDTH,
+            height: ART_HEIGHT,
+        };
+        draw_radio_art(f, app, art_area, theme);
+    }
 }
 
 fn draw_player_and_log(f: &mut Frame, app: &App, area: Rect, theme: &Theme) {
@@ -652,6 +702,10 @@ fn draw_help_settings_content(f: &mut Frame, app: &App, area: Rect, theme: &Them
             } else {
                 "Off"
             },
+        ),
+        (
+            "Show Logo",
+            if app.config.show_logo { "On" } else { "Off" },
         ),
     ];
 

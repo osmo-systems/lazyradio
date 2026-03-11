@@ -255,7 +255,7 @@ async fn handle_key_event(
                     }
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
-                    if app.settings_selected < 3 {
+                    if app.settings_selected < 4 {
                         app.settings_selected += 1;
                     }
                 }
@@ -278,6 +278,10 @@ async fn handle_key_event(
                             app.config.auto_vote_favorites = !app.config.auto_vote_favorites;
                             let _ = app.config.save(&app.data_dir);
                         }
+                        4 => {
+                            app.config.show_logo = !app.config.show_logo;
+                            let _ = app.config.save(&app.data_dir);
+                        }
                         _ => {}
                     }
                 }
@@ -298,6 +302,10 @@ async fn handle_key_event(
                         }
                         3 => {
                             app.config.auto_vote_favorites = !app.config.auto_vote_favorites;
+                            let _ = app.config.save(&app.data_dir);
+                        }
+                        4 => {
+                            app.config.show_logo = !app.config.show_logo;
                             let _ = app.config.save(&app.data_dir);
                         }
                         _ => {}
