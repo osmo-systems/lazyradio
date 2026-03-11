@@ -153,7 +153,7 @@ async fn main() -> Result<()> {
         }
 
         // Update animation frame
-        app.animation_frame = (app.animation_frame + 1) % 8;
+        app.animation_frame = (app.animation_frame + 1) % 48;
 
         // Draw UI
         terminal.draw(|f| ui::draw(f, &mut app))?;

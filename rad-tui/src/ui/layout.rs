@@ -65,43 +65,162 @@ fn draw_main_content(f: &mut Frame, app: &mut App, area: Rect, theme: &Theme) {
 }
 
 fn draw_radio_art(f: &mut Frame, app: &App, area: Rect, theme: &Theme) {
-    // 4-phase breathing cycle mapped onto the 8-frame animation clock:
-    //   0-1 → small   2-3 → medium   4-5 → large   6-7 → medium
-    let phase = match app.animation_frame % 8 {
-        0 | 1 => 0,
-        2 | 3 => 1,
-        4 | 5 => 2,
-        _ => 1,
-    };
-
-    let (ant_left, ant_right): (&str, &str) = match phase {
-        0 => ("(  ", "  )"),
-        1 => ("(  (  ", "  )  )"),
-        _ => (". (  (  ", "  )  ) ."),
-    };
-
-    let signal_color = [Color::DarkGray, Color::Yellow, Color::LightYellow][phase];
-    let wave_color = [Color::DarkGray, Color::Gray, Color::White][phase];
     let body_style = Style::default().fg(Color::DarkGray);
-    let logo_style = theme.tab_active;
 
-    let art: Vec<Line> = vec![
-        Line::from(vec![
-            Span::styled(ant_left, Style::default().fg(wave_color)),
-            Span::styled("●", Style::default().fg(signal_color).add_modifier(Modifier::BOLD)),
-            Span::styled(ant_right, Style::default().fg(wave_color)),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled("_II_", body_style)),
-        Line::from(Span::styled("I||I", body_style)),
-        Line::from(Span::styled("██████╗  █████╗ ██████╗", logo_style)),
-        Line::from(Span::styled("██   ██╗██   ██╗██   ██╗", logo_style)),
-        Line::from(Span::styled("██████╔╝███████║██   ██║", logo_style)),
-        Line::from(Span::styled("██   ██╗██   ██║██   ██║", logo_style)),
-        Line::from(Span::styled("██   ██║██   ██║██████╔╝", logo_style)),
-        Line::from(""),
-        Line::from(Span::styled("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~", Style::default().fg(wave_color))),
-    ];
+    let art: Vec<Line> = match app.player_info.state {
+        PlayerState::Playing => {
+            // 4-phase breathing cycle mapped onto the 8-frame animation clock:
+            //   0-1 → small   2-3 → medium   4-5 → large   6-7 → medium
+            let phase = match app.animation_frame % 8 {
+                0 | 1 => 0,
+                2 | 3 => 1,
+                4 | 5 => 2,
+                _ => 1,
+            };
+            let (ant_left, ant_right): (&str, &str) = match phase {
+                0 => ("(  ", "  )"),
+                1 => ("(  (  ", "  )  )"),
+                _ => (". (  (  ", "  )  ) ."),
+            };
+            let signal_color = [Color::DarkGray, Color::Yellow, Color::LightYellow][phase];
+            let wave_color = [Color::DarkGray, Color::Gray, Color::White][phase];
+            let logo_style = theme.tab_active;
+            vec![
+                Line::from(vec![
+                    Span::styled(ant_left, Style::default().fg(wave_color)),
+                    Span::styled("●", Style::default().fg(signal_color).add_modifier(Modifier::BOLD)),
+                    Span::styled(ant_right, Style::default().fg(wave_color)),
+                ]),
+                Line::from(""),
+                Line::from(Span::styled("_II_", body_style)),
+                Line::from(Span::styled("I||I", body_style)),
+                Line::from(Span::styled("██████╗  █████╗ ██████╗", logo_style)),
+                Line::from(Span::styled("██   ██╗██   ██╗██   ██╗", logo_style)),
+                Line::from(Span::styled("██████╔╝███████║██   ██║", logo_style)),
+                Line::from(Span::styled("██   ██╗██   ██║██   ██║", logo_style)),
+                Line::from(Span::styled("██   ██║██   ██║██████╔╝", logo_style)),
+                Line::from(""),
+                Line::from(Span::styled("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~", Style::default().fg(wave_color))),
+            ]
+        }
+        PlayerState::Loading => {
+            // Tuning/scanning: antenna sweeps asymmetrically left→right like a radar
+            // 8-frame sweep cycle; animate_frame wraps at 48 so % 8 still works
+            let scan = app.animation_frame % 8;
+            let (ant_left, ant_right): (&str, &str) = match scan {
+                0 => (". (  (  ", ""),
+                1 => ("(  (  ",   ""),
+                2 => ("(  ",      ""),
+                3 => ("",         ""),
+                4 => ("",         "  )"),
+                5 => ("",         "  )  )"),
+                6 => ("",         "  )  ) ."),
+                _ => ("",         "  )"),
+            };
+            let signal_color = match scan {
+                0 | 1 | 5 | 6 => Color::Yellow,
+                2 | 4          => Color::Gray,
+                _              => Color::DarkGray,
+            };
+            let wave_color = Style::default().fg(Color::Cyan);
+            const SCAN_BARS: &[&str] = &[
+                "▸ ·  ·  ·  ·  ·  ·",
+                "·  ▸ ·  ·  ·  ·  ·",
+                "·  ·  ▸ ·  ·  ·  ·",
+                "·  ·  ·  ▸ ·  ·  ·",
+                "·  ·  ·  ·  ▸ ·  ·",
+                "·  ·  ·  ·  ·  ▸ ·",
+                "·  ·  ·  ·  ·  ·  ▸",
+                "·  ·  ·  ·  ·  ·  ·",
+            ];
+            let logo_style = Style::default().fg(Color::Cyan);
+            vec![
+                Line::from(vec![
+                    Span::styled(ant_left, wave_color),
+                    Span::styled("●", Style::default().fg(signal_color).add_modifier(Modifier::BOLD)),
+                    Span::styled(ant_right, wave_color),
+                ]),
+                Line::from(""),
+                Line::from(Span::styled("_II_", body_style)),
+                Line::from(Span::styled("I||I", body_style)),
+                Line::from(Span::styled("██████╗  █████╗ ██████╗", logo_style)),
+                Line::from(Span::styled("██   ██╗██   ██╗██   ██╗", logo_style)),
+                Line::from(Span::styled("██████╔╝███████║██   ██║", logo_style)),
+                Line::from(Span::styled("██   ██╗██   ██║██   ██║", logo_style)),
+                Line::from(Span::styled("██   ██║██   ██║██████╔╝", logo_style)),
+                Line::from(""),
+                Line::from(Span::styled(SCAN_BARS[scan], Style::default().fg(Color::Cyan))),
+            ]
+        }
+        PlayerState::Paused => {
+            // Nightly scene: stars flicker slowly, moon crescent on the right, no wave
+            // animation_frame wraps at 48; dividing by 16 gives 3 slow phases (1.6s each)
+            let star_phase = (app.animation_frame / 16) % 3;
+            let stars_top = ["*  .     *  .  *  ", ".  *    .  *      ", "*     .     *  .  "][star_phase];
+            let stars_bot = [".  *  .  *  .  *  ", "*  .  *  .  *  .  ", ".  .  *  .  .  *  "][star_phase];
+            let logo_style = Style::default().fg(Color::Cyan);
+            let night = Style::default().fg(Color::Blue);
+            let moon = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+            vec![
+                Line::from(Span::styled(stars_top, night)),
+                Line::from(vec![
+                    Span::styled(".  *   .   *   ", night),
+                    Span::styled("☽", moon),
+                    Span::styled(" ", night),
+                ]),
+                Line::from(Span::styled("_II_", body_style)),
+                Line::from(Span::styled("I||I", body_style)),
+                Line::from(Span::styled("██████╗  █████╗ ██████╗", logo_style)),
+                Line::from(Span::styled("██   ██╗██   ██╗██   ██╗", logo_style)),
+                Line::from(Span::styled("██████╔╝███████║██   ██║", logo_style)),
+                Line::from(Span::styled("██   ██╗██   ██║██   ██║", logo_style)),
+                Line::from(Span::styled("██   ██║██   ██║██████╔╝", logo_style)),
+                Line::from(""),
+                Line::from(Span::styled(stars_bot, Style::default().fg(Color::DarkGray))),
+            ]
+        }
+        PlayerState::Error => {
+            // Broken antenna: arms splayed, X where signal dot was, flat line at bottom
+            let err = Style::default().fg(Color::Red).add_modifier(Modifier::BOLD);
+            let err_dim = Style::default().fg(Color::Red);
+            let logo_style = Style::default().fg(Color::Red);
+            vec![
+                Line::from(vec![
+                    Span::styled("\\  ", err_dim),
+                    Span::styled("X", err),
+                    Span::styled("  /", err_dim),
+                ]),
+                Line::from(""),
+                Line::from(Span::styled("_I\\_", body_style)),
+                Line::from(Span::styled("I||I", body_style)),
+                Line::from(Span::styled("██████╗  █████╗ ██████╗", logo_style)),
+                Line::from(Span::styled("██   ██╗██   ██╗██   ██╗", logo_style)),
+                Line::from(Span::styled("██████╔╝███████║██   ██║", logo_style)),
+                Line::from(Span::styled("██   ██╗██   ██║██   ██║", logo_style)),
+                Line::from(Span::styled("██   ██║██   ██║██████╔╝", logo_style)),
+                Line::from(""),
+                Line::from(Span::styled("- - - - - - - - - - - - -", Style::default().fg(Color::DarkGray))),
+            ]
+        }
+        PlayerState::Stopped => {
+            // Quiet/idle: dim logo, no signal
+            let dim = Style::default().fg(Color::DarkGray);
+            let logo_style = Style::default().fg(Color::DarkGray);
+            vec![
+                Line::from(Span::styled("(  ·  )", dim)),
+                Line::from(""),
+                Line::from(Span::styled("_II_", body_style)),
+                Line::from(Span::styled("I||I", body_style)),
+                Line::from(Span::styled("██████╗  █████╗ ██████╗", logo_style)),
+                Line::from(Span::styled("██   ██╗██   ██╗██   ██╗", logo_style)),
+                Line::from(Span::styled("██████╔╝███████║██   ██║", logo_style)),
+                Line::from(Span::styled("██   ██╗██   ██║██   ██║", logo_style)),
+                Line::from(Span::styled("██   ██║██   ██║██████╔╝", logo_style)),
+                Line::from(""),
+                Line::from(Span::styled("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~", dim)),
+            ]
+        }
+    };
 
     f.render_widget(Paragraph::new(art).alignment(Alignment::Center), area);
 }
@@ -167,7 +286,7 @@ fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line, them
     f.render_widget(block, area);
 
     // Station list items have a natural maximum width based on their format:
-    //   [⭐/  ][●] name - country - codec - bitrate
+    //   [* /  ][▶/●/○] name - country - codec - bitrate
     // We cap the list widget at this width; any remaining space goes to the logo.
     const MAX_LIST_CONTENT_WIDTH: u16 = 80;
     const ART_WIDTH: u16 = 33;
@@ -201,7 +320,17 @@ fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line, them
             .enumerate()
             .map(|(i, station)| {
                 let is_favorite = app.favorites.is_favorite(&station.station_uuid);
-                let status_marker = if station.is_online() { "●" } else { "○" };
+                let is_playing_station = matches!(
+                    app.player_info.state,
+                    PlayerState::Playing | PlayerState::Paused | PlayerState::Loading
+                ) && station.url_resolved == app.player_info.station_url;
+                let status_marker = if is_playing_station {
+                    "▶"
+                } else if station.is_online() {
+                    "●"
+                } else {
+                    "○"
+                };
                 let is_selected = i == app.selected_index;
                 let is_voted = app.vote_manager.has_voted_recently(&station.station_uuid);
                 let base_style = if is_selected {
@@ -219,7 +348,7 @@ fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line, them
                     } else {
                         Style::default().fg(Color::Yellow)
                     };
-                    spans.push(Span::styled("⭐", star_style));
+                    spans.push(Span::styled("* ", star_style));
                 } else {
                     spans.push(Span::styled("  ", base_style));
                 }
