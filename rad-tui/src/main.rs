@@ -615,6 +615,17 @@ async fn handle_key_event(
         KeyCode::Char('V') => {
             app.toggle_autovote();
         }
+        KeyCode::Char('1') => {
+            if app.current_tab == Tab::Favorites && !app.autovote.get_all().is_empty() {
+                app.autovote_focused = false;
+            }
+        }
+        KeyCode::Char('2') => {
+            if app.current_tab == Tab::Favorites && !app.autovote.get_all().is_empty() {
+                app.autovote_focused = true;
+                app.autovote_selected = 0;
+            }
+        }
         KeyCode::Char('d') | KeyCode::Char('D') => {
             if app.current_tab == Tab::Favorites {
                 if app.autovote_focused {

@@ -77,7 +77,16 @@ fn draw_main_content(f: &mut Frame, app: &mut App, area: Rect, theme: &Theme) {
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(5), Constraint::Length(autovote_h)])
             .split(area);
-        draw_station_list(f, app, chunks[0], tab_title, theme);
+
+        // Prepend the [1] sub-list indicator to the tab title
+        let border_style = if !app.autovote_focused { theme.border_focused } else { theme.border_unfocused };
+        let mut spans = vec![
+            Span::styled("[1]\u{2500} ", border_style),
+        ];
+        spans.extend(tab_title.spans);
+        let fav_title = Line::from(spans);
+
+        draw_station_list(f, app, chunks[0], fav_title, theme);
         draw_autovote_list(f, app, chunks[1], theme);
     } else {
         draw_station_list(f, app, area, tab_title, theme);
@@ -254,7 +263,10 @@ fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line, them
     if visible_count != app.current_query.limit {
         app.current_query.limit = visible_count;
         app.pages_cache.clear();
-        app.pending_search = true;
+        // Only trigger a new search when actually browsing — favorites/history are local.
+        if app.current_tab == Tab::Browse {
+            app.pending_search = true;
+        }
     }
 
     // Station list loses focus when any popup is open or autovote section is focused
@@ -785,9 +797,10 @@ fn draw_autovote_list(f: &mut Frame, app: &App, area: Rect, theme: &Theme) {
         theme.border_unfocused
     };
 
+    let title = widget_title("Autovote", Some(2), app.autovote_focused, theme);
     let block = Block::default()
         .borders(Borders::ALL)
-        .title(Span::styled(" Autovote ", border_style))
+        .title(title)
         .border_style(border_style);
 
     let inner = block.inner(area);
@@ -826,7 +839,7 @@ fn draw_autovote_list(f: &mut Frame, app: &App, area: Rect, theme: &Theme) {
             let bitrate_str = if s.bitrate > 0 { format!("{} kbps", s.bitrate) } else { "—".to_string() };
 
             let line = Line::from(vec![
-                Span::styled(" ", base_style),
+                Span::styled("    ", base_style), // 4-char prefix to align with favorites list
                 Span::styled(name_col, name_s),
                 Span::styled("  ", base_style),
                 Span::styled(country_col, country_s),

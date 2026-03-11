@@ -37,32 +37,35 @@ pub fn popup_block(title: Line<'static>, theme: &Theme) -> Block<'static> {
 
 /// Builds a widget title [`Line`] with an optional keyboard-shortcut digit indicator.
 ///
-/// The indicator follows the convention `-[n]-` to the left of the label,
-/// making the shortcut visible directly in the panel border.
+/// The digit and `─` separator blend into the border line (same color), producing:
 ///
-/// - `shortcut = Some(2)` → ` -[2]- Label `
+/// ```text
+/// ┌─ 1 ─ Favorites ────────────────────────────────────────────┐
+/// ```
+///
+/// - `shortcut = Some(1)` → ` [1] ─ Label `
 /// - `shortcut = None`    → ` Label `
 ///
-/// `active` controls whether the label renders with [`Theme::tab_active`]
-/// or [`Theme::tab_inactive`].  This lets the same function serve both
-/// always-focused panels (pass `true`) and panels that can lose focus.
+/// `active` controls the label style ([`Theme::tab_active`] vs [`Theme::tab_inactive`])
+/// and the digit+separator color ([`Theme::border_focused`] vs [`Theme::border_unfocused`]),
+/// so they always match the surrounding border.
 ///
 /// # Example
 ///
 /// ```ignore
-/// // Simple panel title, always focused
+/// // Simple panel title, always active
 /// let title = widget_title("Now Playing", None, true, &theme);
 ///
 /// // Panel with shortcut indicator, focus-aware
-/// let title = widget_title("Status Log", Some(2), focused, &theme);
+/// let title = widget_title("Favorites", Some(1), focused, &theme);
 /// ```
 pub fn widget_title(label: &str, shortcut: Option<u8>, active: bool, theme: &Theme) -> Line<'static> {
     let label_style = if active { theme.tab_active } else { theme.tab_inactive };
+    let border_style = if active { theme.border_focused } else { theme.border_unfocused };
 
     match shortcut {
         Some(n) => Line::from(vec![
-            Span::raw(" "),
-            Span::styled(format!("-[{}]-", n), theme.shortcut_indicator),
+            Span::styled(format!("[{}]\u{2500} ", n), border_style),
             Span::styled(label.to_string(), label_style),
             Span::raw(" "),
         ]),
