@@ -284,6 +284,17 @@ async fn handle_key_event(
                         app.help_log_scroll += 1;
                     }
                 }
+                KeyCode::Char('f') => {
+                    use tui_kit::LogLevel;
+                    app.log_level_filter = match app.log_level_filter {
+                        None => Some(LogLevel::Error),
+                        Some(LogLevel::Error) => Some(LogLevel::Warning),
+                        Some(LogLevel::Warning) => Some(LogLevel::Info),
+                        Some(LogLevel::Info) => Some(LogLevel::Debug),
+                        Some(LogLevel::Debug) => None,
+                    };
+                    app.help_log_scroll = 0;
+                }
                 _ => {}
             },
             HelpTab::Settings => match key {

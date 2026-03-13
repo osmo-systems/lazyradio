@@ -872,23 +872,53 @@ fn draw_autovote_tab(f: &mut Frame, app: &mut App, area: Rect, title: Line, them
 }
 
 fn draw_help_log_content(f: &mut Frame, app: &App, area: Rect) {
-    if app.status_log.is_empty() {
+    // Reserve top line for filter indicator
+    let filter_area = Rect { height: 1, ..area };
+    let log_area = Rect {
+        y: area.y + 1,
+        height: area.height.saturating_sub(1),
+        ..area
+    };
+
+    // Draw filter indicator
+    let (filter_label, filter_color) = match app.log_level_filter {
+        None => ("Filter: All  [f] cycle", Color::DarkGray),
+        Some(tui_kit::LogLevel::Error) => ("Filter: Error  [f] cycle", Color::Red),
+        Some(tui_kit::LogLevel::Warning) => ("Filter: Warning  [f] cycle", Color::Yellow),
+        Some(tui_kit::LogLevel::Info) => ("Filter: Info  [f] cycle", Color::White),
+        Some(tui_kit::LogLevel::Debug) => ("Filter: Debug  [f] cycle", Color::DarkGray),
+    };
+    f.render_widget(
+        Paragraph::new(filter_label).style(Style::default().fg(filter_color)),
+        filter_area,
+    );
+
+    let filtered: Vec<_> = app
+        .status_log
+        .iter()
+        .filter(|e| match app.log_level_filter {
+            None => true,
+            Some(level) => e.level == level,
+        })
+        .collect();
+
+    if filtered.is_empty() {
         f.render_widget(
-            Paragraph::new("No logs yet.")
+            Paragraph::new("No logs.")
                 .alignment(Alignment::Center)
                 .style(Style::default().fg(Color::DarkGray)),
-            area,
+            log_area,
         );
         return;
     }
 
-    let count = app.status_log.len();
-    let visible = area.height as usize;
+    let count = filtered.len();
+    let visible = log_area.height as usize;
     let max_scroll = count.saturating_sub(visible);
     let scroll = app.help_log_scroll.min(max_scroll);
     let end = count.min(scroll + visible);
 
-    let list_items: Vec<ListItem> = app.status_log[scroll..end]
+    let list_items: Vec<ListItem> = filtered[scroll..end]
         .iter()
         .map(|entry| {
             let msg_color = entry.level.color();
@@ -902,7 +932,7 @@ fn draw_help_log_content(f: &mut Frame, app: &App, area: Rect) {
         })
         .collect();
 
-    f.render_widget(List::new(list_items), area);
+    f.render_widget(List::new(list_items), log_area);
 }
 
 fn draw_confirm_delete_popup(f: &mut Frame, app: &App, theme: &Theme) {

@@ -124,6 +124,7 @@ pub struct App {
     // Status log
     pub status_log: Vec<LogEntry>,
     pub help_log_scroll: usize,
+    pub log_level_filter: Option<LogLevel>,
     
     // UI state
     pub visible_stations_count: usize,
@@ -226,6 +227,7 @@ impl App {
 
             status_log: Vec::new(),
             help_log_scroll: 0,
+            log_level_filter: None,
 
             visible_stations_count: 10, // Default, will be updated by UI
 
