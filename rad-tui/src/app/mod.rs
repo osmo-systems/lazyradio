@@ -40,6 +40,7 @@ pub enum ConfirmDelete {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
 pub enum BrowseMode {
     Popular,
     Search,
@@ -84,6 +85,7 @@ pub struct App {
     pub favorites: FavoritesManager,
     pub history: HistoryManager,
     pub autovote: AutovoteManager,
+    #[allow(dead_code)]
     pub cache: CacheManager,
     pub search_history: SearchHistoryManager,
     pub vote_manager: VoteManager,

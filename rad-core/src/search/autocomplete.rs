@@ -272,11 +272,91 @@ mod tests {
     fn test_get_suggestions_values() {
         let mut data = AutocompleteData::default();
         data.countries = vec!["france".to_string(), "germany".to_string(), "french guiana".to_string()];
-        
+
         let suggestions = get_suggestions("country=fr", 10, &data);
-        
+
         assert!(suggestions.contains(&"france".to_string()));
         assert!(suggestions.contains(&"french guiana".to_string()));
         assert!(!suggestions.contains(&"germany".to_string()));
+    }
+
+    #[test]
+    fn test_detect_context_cursor_past_end_returns_field_name() {
+        let ctx = detect_context("co", 100);
+        assert_eq!(ctx, AutocompleteContext::FieldName);
+    }
+
+    #[test]
+    fn test_detect_context_tag_comma_returns_field_value() {
+        let input = "tag=jazz,";
+        let ctx = detect_context(input, input.len());
+        assert_eq!(ctx, AutocompleteContext::FieldValue("tag".to_string()));
+    }
+
+    #[test]
+    fn test_detect_context_after_completed_field_is_field_name() {
+        let input = "country=France t";
+        let ctx = detect_context(input, input.len());
+        assert_eq!(ctx, AutocompleteContext::FieldName);
+    }
+
+    #[test]
+    fn test_detect_context_at_empty_value() {
+        let input = "order=";
+        let ctx = detect_context(input, input.len());
+        assert_eq!(ctx, AutocompleteContext::FieldValue("order".to_string()));
+    }
+
+    #[test]
+    fn test_get_suggestions_boolean_field() {
+        let data = AutocompleteData::default();
+        let input = "hidebroken=";
+        let mut suggestions = get_suggestions(input, input.len(), &data);
+        suggestions.sort();
+        assert_eq!(suggestions, vec!["false".to_string(), "true".to_string()]);
+    }
+
+    #[test]
+    fn test_get_suggestions_order_field_contains_all_values() {
+        let data = AutocompleteData::default();
+        let input = "order=";
+        let suggestions = get_suggestions(input, input.len(), &data);
+        for expected in ["votes", "name", "clickcount", "bitrate", "random"] {
+            assert!(suggestions.contains(&expected.to_string()), "missing '{}'", expected);
+        }
+    }
+
+    #[test]
+    fn test_get_suggestions_unknown_field_returns_empty() {
+        let data = AutocompleteData::default();
+        let suggestions = get_suggestions("xyz=abc", 7, &data);
+        assert!(suggestions.is_empty());
+    }
+
+    #[test]
+    fn test_get_suggestions_invalid_comma_returns_empty() {
+        let data = AutocompleteData::default();
+        let input = "country=france,";
+        let suggestions = get_suggestions(input, input.len(), &data);
+        assert!(suggestions.is_empty());
+    }
+
+    #[test]
+    fn test_get_suggestions_starts_with_ranks_before_contains() {
+        let mut data = AutocompleteData::default();
+        // "mainstream" starts with "ma"; "drama" only contains "ma"
+        data.tags = vec!["drama".to_string(), "mainstream".to_string()];
+        let input = "tag=ma";
+        let suggestions = get_suggestions(input, input.len(), &data);
+        let mainstream_pos = suggestions.iter().position(|s| s == "mainstream").unwrap();
+        let drama_pos = suggestions.iter().position(|s| s == "drama").unwrap();
+        assert!(mainstream_pos < drama_pos);
+    }
+
+    #[test]
+    fn test_get_suggestions_cursor_at_start_returns_all_fields() {
+        let data = AutocompleteData::default();
+        let suggestions = get_suggestions("", 0, &data);
+        assert_eq!(suggestions.len(), data.field_names.len());
     }
 }

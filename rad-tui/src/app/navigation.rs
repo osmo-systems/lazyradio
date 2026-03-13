@@ -95,12 +95,14 @@ impl App {
         self.stations.get(self.selected_index)
     }
 
+    #[allow(dead_code)]
     pub fn set_browse_mode(&mut self, mode: BrowseMode) {
         self.browse_mode = mode;
         self.browse_list_mode = matches!(mode, BrowseMode::ByCountry | BrowseMode::ByGenre | BrowseMode::ByLanguage);
         self.browse_list_index = 0;
     }
 
+    #[allow(dead_code)]
     pub async fn load_browse_lists(&mut self) -> Result<()> {
         self.loading = true;
 
@@ -150,6 +152,7 @@ impl App {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn select_from_browse_list(&mut self) -> Result<()> {
         if !self.browse_list_mode {
             return Ok(());
@@ -220,6 +223,7 @@ impl App {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn load_popular_stations(&mut self) -> Result<()> {
         self.loading = true;
         tracing::info!("Loading popular stations...");

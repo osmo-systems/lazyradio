@@ -208,6 +208,7 @@ impl SearchPopup {
         self.autocomplete_shown = !self.autocomplete_items.is_empty();
     }
 
+    #[allow(dead_code)]
     pub fn validate(&mut self) {
         // Check if enough time has passed (300ms debounce)
         if let Some(timer) = self.error_debounce_timer {

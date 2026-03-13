@@ -198,6 +198,125 @@ impl Config {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_startup_tab_labels() {
+        assert_eq!(StartupTab::Search.label(), "Search");
+        assert_eq!(StartupTab::Favorites.label(), "Favorites");
+        assert_eq!(StartupTab::History.label(), "History");
+    }
+
+    #[test]
+    fn test_startup_tab_cycle_next() {
+        assert_eq!(StartupTab::Search.cycle_next(), StartupTab::Favorites);
+        assert_eq!(StartupTab::Favorites.cycle_next(), StartupTab::History);
+        assert_eq!(StartupTab::History.cycle_next(), StartupTab::Search);
+    }
+
+    #[test]
+    fn test_startup_tab_cycle_prev() {
+        assert_eq!(StartupTab::Search.cycle_prev(), StartupTab::History);
+        assert_eq!(StartupTab::Favorites.cycle_prev(), StartupTab::Search);
+        assert_eq!(StartupTab::History.cycle_prev(), StartupTab::Favorites);
+    }
+
+    #[test]
+    fn test_startup_tab_next_then_prev_is_identity() {
+        for tab in [StartupTab::Search, StartupTab::Favorites, StartupTab::History] {
+            assert_eq!(tab.cycle_next().cycle_prev(), tab);
+            assert_eq!(tab.cycle_prev().cycle_next(), tab);
+        }
+    }
+
+    #[test]
+    fn test_default_search_order_as_api_str() {
+        assert_eq!(DefaultSearchOrder::Votes.as_api_str(), "votes");
+        assert_eq!(DefaultSearchOrder::Name.as_api_str(), "name");
+        assert_eq!(DefaultSearchOrder::ClickCount.as_api_str(), "clickcount");
+        assert_eq!(DefaultSearchOrder::Bitrate.as_api_str(), "bitrate");
+        assert_eq!(DefaultSearchOrder::Random.as_api_str(), "random");
+    }
+
+    #[test]
+    fn test_default_search_order_labels() {
+        assert_eq!(DefaultSearchOrder::Votes.label(), "Votes");
+        assert_eq!(DefaultSearchOrder::Name.label(), "Name");
+        assert_eq!(DefaultSearchOrder::ClickCount.label(), "Click Count");
+        assert_eq!(DefaultSearchOrder::Bitrate.label(), "Bitrate");
+        assert_eq!(DefaultSearchOrder::Random.label(), "Random");
+    }
+
+    #[test]
+    fn test_default_search_order_cycle_next_full_rotation() {
+        assert_eq!(DefaultSearchOrder::Votes.cycle_next(), DefaultSearchOrder::Name);
+        assert_eq!(DefaultSearchOrder::Name.cycle_next(), DefaultSearchOrder::ClickCount);
+        assert_eq!(DefaultSearchOrder::ClickCount.cycle_next(), DefaultSearchOrder::Bitrate);
+        assert_eq!(DefaultSearchOrder::Bitrate.cycle_next(), DefaultSearchOrder::Random);
+        assert_eq!(DefaultSearchOrder::Random.cycle_next(), DefaultSearchOrder::Votes);
+    }
+
+    #[test]
+    fn test_default_search_order_cycle_prev_full_rotation() {
+        assert_eq!(DefaultSearchOrder::Votes.cycle_prev(), DefaultSearchOrder::Random);
+        assert_eq!(DefaultSearchOrder::Name.cycle_prev(), DefaultSearchOrder::Votes);
+        assert_eq!(DefaultSearchOrder::ClickCount.cycle_prev(), DefaultSearchOrder::Name);
+        assert_eq!(DefaultSearchOrder::Bitrate.cycle_prev(), DefaultSearchOrder::ClickCount);
+        assert_eq!(DefaultSearchOrder::Random.cycle_prev(), DefaultSearchOrder::Bitrate);
+    }
+
+    #[test]
+    fn test_default_search_order_next_then_prev_is_identity() {
+        let variants = [
+            DefaultSearchOrder::Votes,
+            DefaultSearchOrder::Name,
+            DefaultSearchOrder::ClickCount,
+            DefaultSearchOrder::Bitrate,
+            DefaultSearchOrder::Random,
+        ];
+        for order in variants {
+            assert_eq!(order.cycle_next().cycle_prev(), order);
+            assert_eq!(order.cycle_prev().cycle_next(), order);
+        }
+    }
+
+    #[test]
+    fn test_config_update_session_state() {
+        let mut config = Config::default();
+        config.update_session_state(
+            0.8,
+            Some("Jazz FM".to_string()),
+            Some("http://stream.example.com".to_string()),
+        );
+        assert_eq!(config.last_volume, Some(0.8));
+        assert_eq!(config.last_station_name, Some("Jazz FM".to_string()));
+        assert_eq!(config.last_station_url, Some("http://stream.example.com".to_string()));
+    }
+
+    #[test]
+    fn test_config_update_session_state_clears_station() {
+        let mut config = Config::default();
+        config.update_session_state(0.5, Some("s".to_string()), Some("u".to_string()));
+        config.update_session_state(0.3, None, None);
+        assert_eq!(config.last_volume, Some(0.3));
+        assert_eq!(config.last_station_name, None);
+        assert_eq!(config.last_station_url, None);
+    }
+
+    #[test]
+    fn test_config_default_values() {
+        let config = Config::default();
+        assert_eq!(config.default_volume, 0.5);
+        assert!(!config.play_at_startup);
+        assert!(!config.auto_vote_favorites);
+        assert!(config.show_logo);
+        assert_eq!(config.toast_duration_secs, 3);
+        assert_eq!(config.max_history_entries, 50);
+    }
+}
+
 pub fn get_data_dir() -> Result<PathBuf> {
     let data_dir = dirs::data_dir()
         .context("Failed to get data directory")?

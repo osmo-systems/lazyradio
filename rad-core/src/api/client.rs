@@ -143,6 +143,7 @@ impl RadioBrowserClient {
         Ok(data)
     }
 
+    #[allow(dead_code)]
     async fn post<T: serde::de::DeserializeOwned>(&mut self, endpoint: &str) -> Result<T> {
         let url = format!("{}{}", self.get_base_url(), endpoint);
         debug!("POST request to: {}", url);
