@@ -1139,7 +1139,7 @@ impl App {
                         click_trend: 0,
                     })
                     .collect();
-                self.selected_index = 0;
+                self.selected_index = self.selected_index.min(self.stations.len().saturating_sub(1));
             }
             Tab::History => {
                 self.stations = self.history.get_all()

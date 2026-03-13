@@ -413,8 +413,8 @@ fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line, them
                     )
                 };
 
-                const NAME_W: usize = 32;
-                const COUNTRY_W: usize = 14;
+                const NAME_W: usize = 40;
+                const COUNTRY_W: usize = 18;
                 const CODEC_W: usize = 6;
 
                 let name_col    = display_col(&station.name, NAME_W);
@@ -795,8 +795,8 @@ fn draw_autovote_tab(f: &mut Frame, app: &mut App, area: Rect, title: Line, them
         return;
     }
 
-    const NAME_W: usize = 32;
-    const COUNTRY_W: usize = 14;
+    const NAME_W: usize = 40;
+    const COUNTRY_W: usize = 18;
     const CODEC_W: usize = 6;
 
     let autovote_selected = app.autovote_selected;
