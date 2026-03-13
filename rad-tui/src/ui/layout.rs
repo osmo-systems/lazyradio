@@ -373,11 +373,8 @@ fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line, them
                     "○"
                 };
                 let is_selected = i == app.selected_index;
-                let is_voted = app.vote_manager.has_voted_recently(&station.station_uuid);
                 let base_style = if is_selected {
                     theme.selection
-                } else if is_voted {
-                    Style::default().fg(Color::LightGreen)
                 } else {
                     Style::default().fg(Color::White)
                 };
@@ -407,11 +404,17 @@ fn draw_station_list(f: &mut Frame, app: &mut App, area: Rect, title: Line, them
                 spans.push(Span::styled(status_marker, marker_style));
 
                 // Per-field colors when not selected; uniform base_style when selected
+                let recently_voted = app.vote_manager.has_voted_recently(&station.station_uuid);
                 let (name, country, codec, bitrate) = if is_selected {
                     (base_style, base_style, base_style, base_style)
                 } else {
+                    let name_style = if recently_voted {
+                        Style::default().fg(Color::LightBlue)
+                    } else {
+                        base_style
+                    };
                     (
-                        base_style,
+                        name_style,
                         Style::default().fg(Color::Cyan),
                         Style::default().fg(Color::Indexed(4)),
                         Style::default().fg(Color::Magenta),
@@ -800,6 +803,14 @@ fn draw_autovote_tab(f: &mut Frame, app: &mut App, area: Rect, title: Line, them
         return;
     }
 
+    const MAX_LIST_CONTENT_WIDTH: u16 = 80;
+    const ART_WIDTH: u16 = 33;
+    const ART_HEIGHT: u16 = 12;
+    let list_width = inner.width.min(MAX_LIST_CONTENT_WIDTH);
+    let remaining = inner.width.saturating_sub(list_width);
+    let show_art = app.config.show_logo && remaining >= ART_WIDTH && inner.height >= ART_HEIGHT;
+    let list_area = Rect { width: list_width, ..inner };
+
     const NAME_W: usize = 40;
     const COUNTRY_W: usize = 18;
     const CODEC_W: usize = 6;
@@ -845,7 +856,19 @@ fn draw_autovote_tab(f: &mut Frame, app: &mut App, area: Rect, title: Line, them
     let list = List::new(list_items);
     let mut state = ListState::default();
     state.select(Some(autovote_selected));
-    f.render_stateful_widget(list, inner, &mut state);
+    f.render_stateful_widget(list, list_area, &mut state);
+
+    if show_art {
+        let h_pad = (remaining - ART_WIDTH) / 2;
+        let v_pad = inner.height.saturating_sub(ART_HEIGHT) / 2;
+        let art_area = Rect {
+            x: inner.x + list_width + h_pad,
+            y: inner.y + v_pad,
+            width: ART_WIDTH,
+            height: ART_HEIGHT,
+        };
+        draw_radio_art(f, app, art_area, theme);
+    }
 }
 
 fn draw_help_log_content(f: &mut Frame, app: &App, area: Rect) {
