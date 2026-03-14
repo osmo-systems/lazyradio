@@ -1,0 +1,147 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-apple-darwin
+            os: macos-13
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Linux audio deps
+        if: matrix.os == 'ubuntu-latest' && !matrix.use_cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev pkg-config
+
+      - name: Install cross
+        if: matrix.use_cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Build (native)
+        if: ${{ !matrix.use_cross }}
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build (cross)
+        if: ${{ matrix.use_cross }}
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          ARCHIVE="rad-${VERSION}-${{ matrix.target }}.tar.gz"
+          tar -czf "$ARCHIVE" \
+            -C target/${{ matrix.target }}/release \
+            rad _rad-daemon
+          echo "ARCHIVE=$ARCHIVE" >> $GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ env.ARCHIVE }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Update formula
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          REPO="https://github.com/${{ github.repository }}"
+
+          sha() {
+            sha256sum "artifacts/rad-${VERSION}-${1}.tar.gz" | awk '{print $1}'
+          }
+
+          SHA_AARCH64_DARWIN=$(sha aarch64-apple-darwin)
+          SHA_X86_64_DARWIN=$(sha x86_64-apple-darwin)
+          SHA_AARCH64_LINUX=$(sha aarch64-unknown-linux-gnu)
+          SHA_X86_64_LINUX=$(sha x86_64-unknown-linux-gnu)
+
+          python3 - "$VERSION" \
+            "$SHA_AARCH64_DARWIN" "$SHA_X86_64_DARWIN" \
+            "$SHA_AARCH64_LINUX"  "$SHA_X86_64_LINUX" <<'EOF'
+import re, sys
+
+version, sha_aarch64_darwin, sha_x86_64_darwin, sha_aarch64_linux, sha_x86_64_linux = sys.argv[1:]
+
+shas = {
+  'aarch64-apple-darwin':      sha_aarch64_darwin,
+  'x86_64-apple-darwin':       sha_x86_64_darwin,
+  'aarch64-unknown-linux-gnu': sha_aarch64_linux,
+  'x86_64-unknown-linux-gnu':  sha_x86_64_linux,
+}
+
+lines = open('Formula/rad.rb').read().splitlines()
+result = []
+pending_sha = None
+
+for line in lines:
+  if line.strip().startswith('version '):
+    line = re.sub(r'version "[^"]*"', f'version "{version}"', line)
+  if pending_sha and 'sha256' in line:
+    line = re.sub(r'"[0-9a-f]{64}"', f'"{pending_sha}"', line)
+    pending_sha = None
+  else:
+    for target, sha in shas.items():
+      if target in line and 'url' in line:
+        pending_sha = sha
+        break
+  result.append(line)
+
+open('Formula/rad.rb', 'w').write('\n'.join(result) + '\n')
+EOF
+
+      - name: Commit updated formula
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          git add Formula/rad.rb
+          git diff --cached --quiet || git commit -m "chore: update formula for v${VERSION} [skip ci]"
+          git push origin HEAD:main
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.tar.gz
+          generate_release_notes: true
