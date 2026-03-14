@@ -2,8 +2,7 @@
 resolver = "2"
 members = [
     "tui-kit",
-    "rad-core",
-    "rad-tui",
+    "rad",
 ]
 
 [workspace.package]
