@@ -43,10 +43,10 @@ chrono = { workspace = true }
 dirs = { workspace = true }
 
 # Core (always included)
-reqwest = { version = "0.12", features = ["json", "stream"] }
-ureq = "2.10"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+ureq = { version = "2.10", default-features = false, features = ["tls"] }
 rodio = { version = "0.19", features = ["symphonia-all"] }
-trust-dns-resolver = "0.23"
+trust-dns-resolver = { version = "0.23", default-features = false, features = ["tokio-runtime", "system-config"] }
 bytes = "1.5"
 rand = "0.8"
 unicode-width = "0.2"
